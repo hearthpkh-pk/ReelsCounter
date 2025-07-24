@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reels Counter Pro</title>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    
+    <!-- Google Fonts: Prompt -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    
+    
+    <!-- Your New Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="app-layout">
+        <!-- ========================================== -->
+        <!-- =========== SIDEBAR NAVIGATION =========== -->
+        <!-- ========================================== -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <img src="https://placehold.co/40x40/7c3aed/ffffff?text=R" alt="Logo" class="logo">
+                <span class="logo-text">ReelsCounter</span>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-category">แพลตฟอร์ม</li>
+                <!-- ปุ่มเลือกแพลตฟอร์ม (คง onclick และ id เดิมไว้) -->
+                <li><a href="#" id="btn-fb" class="nav-link active" onclick="showTab('fb')"><i class="fab fa-facebook fa-fw"></i><span>Facebook</span></a></li>
+                <li><a href="#" id="btn-ig" class="nav-link" onclick="showTab('ig')"><i class="fab fa-instagram fa-fw"></i><span>Instagram</span></a></li>
+                <li><a href="#" class="nav-link disabled"><i class="fab fa-tiktok fa-fw"></i><span>Tiktok</span><span class="soon-badge">เร็วๆ นี้</span></a></li>
+                
+                <li class="nav-category">เครื่องมือ</li>
+                <li><a href="#" class="nav-link disabled"><i class="fa-solid fa-upload fa-fw"></i><span>โหลดคลิป</span></a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <!-- ส่วนของปุ่มตั้งค่าและอัปเดต (คง ID เดิมไว้ทั้งหมด) -->
+                <div id="update-block" class="settings-button">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>ตรวจสอบ & ซ่อมแซม</span>
+                </div>
+
+                <div id="update-dropdown" class="hidden">
+                    <div class="ud-item" id="btn-check-update">🔍 เช็คเวอร์ชั่นล่าสุด</div> <!-- ⚠️ แก้ id ให้ตรงกับ JS -->
+                    <div class="ud-item" id="ud-help">❓ วิธีใช้</div>
+                    <div class="ud-item" id="ud-docs">📘 รายละเอียดโปรแกรม</div>
+                    <div class="ud-item" id="ud-check">⬇️ ตรวจสอบอัปเดต</div>
+                    <div class="ud-item" id="ud-repair">🔧 ซ่อมแซมโปรแกรม</div>
+                    <div class="ud-divider"></div>
+                    <div class="ud-item" id="ud-about">ℹ️ เกี่ยวกับ</div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- ========================================== -->
+        <!-- ============ MAIN CONTENT AREA =========== -->
+        <!-- ========================================== -->
+        <main class="main-content">
+          <!-- Facebook Content -->
+          <div id="content-fb" class="platform-content">
+            <header class="content-header">
+              <h1 id="fb-header-title">นับยอดวิวจาก Reels - Facebook</h1>
+              <div class="input-group">
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-user-circle icon"></i>
+                  <input type="text" id="fb-profile-url" placeholder="ลิงก์โปรไฟล์หลัก (สำหรับดึงวันที่)">
+                </div>
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-clapperboard icon"></i>
+                  <input type="text" id="fb-reels-url" placeholder="ลิงก์หน้า Reels (สำหรับดึงยอดวิว)">
+                </div>
+                <div class="input-wrapper short">
+                  <i class="fa-solid fa-arrow-down-1-9 icon"></i>
+                  <input type="number" id="fb-clip-count" value="20" title="จำนวนคลิปที่ต้องการ">
+                </div>
+                <button id="btn-start-fb" class="action-btn btn-fb attention" onclick="startScan('fb')">
+                  <i class="fa-solid fa-rocket"></i>
+                  <span>เริ่มสแกน</span>
+                </button>
+              </div>
+            </header>
+
+            <div class="stats-and-status">
+              <div class="summary-cards">
+                <div class="card">
+                  <div class="card-icon total"><i class="fa-solid fa-eye"></i></div>
+                  <div class="card-content">
+                    <span class="card-title">ยอดรวมทั้งหมด</span>
+                    <span class="card-value" id="fb-total-views">-</span>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-icon avg"><i class="fa-solid fa-chart-line"></i></div>
+                  <div class="card-content">
+                    <span class="card-title">ค่าเฉลี่ย</span>
+                    <span class="card-value" id="fb-avg-views">-</span>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-icon max"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                  <div class="card-content">
+                    <span class="card-title">ยอดสูงสุด</span>
+                    <span class="card-value" id="fb-max-views">-</span>
+                  </div>
+                </div>
+              </div>
+              <div id="fb-status-label" class="status-label">กรุณาป้อนข้อมูลและกดปุ่ม 'เริ่มสแกน'</div>
+            </div>
+
+            <div id="fb-progress-container" class="progress-bar-container hidden">
+              <div class="progress-bar progress-bar-fb"></div>
+            </div>
+
+            <div class="result-area">
+              <div class="result-header">
+                <div class="view-tab-container">
+                  <button class="view-tab active" onclick="showView('fb', 'reels')"><i class="fa-solid fa-list-ul"></i> รายการ Reels</button>
+                  <button class="view-tab" onclick="showView('fb', 'log')"><i class="fa-solid fa-terminal"></i> Log การทำงาน</button>
+                </div>
+                <div class="result-actions">
+                  <button class="manual-btn" onclick="manualFetchDate('fb')"><i class="fa-solid fa-calendar-day"></i> ดึงวันที่</button>
+                  <button id="fb-delete-btn" class="btn-danger" disabled><i class="fa-solid fa-trash-can"></i> ลบคลิป</button>
+                </div>
+              </div>
+
+              <div id="fb-reels-view" class="view-content">
+                <div class="table-wrapper">
+                  <table id="fb-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Reel Link</th>
+                        <th><span class="table-col-header views">Views</span></th>
+                        <th><span class="table-col-header date">Date</span></th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div id="fb-log-view" class="view-content hidden">
+                <textarea id="fb-log-textarea" readonly placeholder="Log การทำงานของ Facebook จะแสดงที่นี่..."></textarea>
+              </div>
+            </div> <!-- .result-area -->
+          </div> <!-- #content-fb -->
+
+          <!-- Instagram Content -->
+          <div id="content-ig" class="platform-content hidden">
+            <header class="content-header">
+              <h1 id="ig-header-title">นับยอดวิวจาก Reels - Instagram</h1>
+              <div class="input-group">
+                <div class="input-wrapper">
+                  <i class="fa-solid fa-at icon"></i>
+                  <input type="text" id="ig-reels-url" placeholder="วางลิงก์โปรไฟล์หรือหน้า Reels ที่นี่">
+                </div>
+                <div class="input-wrapper short">
+                  <i class="fa-solid fa-arrow-down-1-9 icon"></i>
+                  <input type="number" id="ig-clip-count" value="20" title="จำนวนคลิปที่ต้องการ">
+                </div>
+                <button id="btn-start-ig" class="action-btn btn-ig attention" onclick="startScan('ig')">
+                  <i class="fa-solid fa-rocket"></i>
+                  <span>เริ่มสแกน</span>
+                </button>
+              </div>
+            </header>
+
+            <div class="stats-and-status">
+              <div class="summary-cards">
+                <div class="card">
+                  <div class="card-icon total"><i class="fa-solid fa-eye"></i></div>
+                  <div class="card-content">
+                    <span class="card-title">ยอดรวมทั้งหมด</span>
+                    <span class="card-value" id="ig-total-views">-</span>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-icon avg"><i class="fa-solid fa-chart-line"></i></div>
+                  <div class="card-content">
+                    <span class="card-title">ค่าเฉลี่ย</span>
+                    <span class="card-value" id="ig-avg-views">-</span>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-icon max"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                  <div class="card-content">
+                    <span class="card-title">ยอดสูงสุด</span>
+                    <span class="card-value" id="ig-max-views">-</span>
+                  </div>
+                </div>
+              </div>
+              <div id="ig-status-label" class="status-label">กรุณาป้อนข้อมูลและกดปุ่ม 'เริ่มสแกน'</div>
+            </div>
+
+            <div id="ig-progress-container" class="progress-bar-container hidden">
+              <div class="progress-bar progress-bar-ig"></div>
+            </div>
+
+            <div class="result-area">
+              <div class="result-header">
+                <div class="view-tab-container">
+                  <button class="view-tab active" onclick="showView('ig', 'reels')"><i class="fa-solid fa-list-ul"></i> รายการ Reels</button>
+                  <button class="view-tab" onclick="showView('ig', 'log')"><i class="fa-solid fa-terminal"></i> Log การทำงาน</button>
+                </div>
+                <div class="result-actions">
+                  <button class="manual-btn" onclick="manualFetchDate('ig')"><i class="fa-solid fa-calendar-day"></i> ดึงวันที่</button>
+                  <button id="ig-delete-btn" class="btn-danger" disabled><i class="fa-solid fa-trash-can"></i> ลบคลิป</button>
+                </div>
+              </div>
+
+              <div id="ig-reels-view" class="view-content">
+                <div class="table-wrapper">
+                  <table id="ig-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Reel Link</th>
+                        <th><span class="table-col-header views">Views</span></th>
+                        <th><span class="table-col-header date">Date</span></th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div id="ig-log-view" class="view-content hidden">
+                <textarea id="ig-log-textarea" readonly placeholder="Log การทำงานของ Instagram จะแสดงที่นี่..."></textarea>
+              </div>
+            </div> <!-- .result-area -->
+          </div> <!-- #content-ig -->
+        </main>
+
+
+
+
+
+
+    <!-- ====================================================== -->
+    <!-- MODALS & OVERLAYS (นำโครงสร้างจากไฟล์เดิมมาทั้งหมด) -->
+    <!-- ====================================================== -->
+    <div class="modal-backdrop" id="updateModalBackdrop" style="display:none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="updateVersionTitle">ตรวจสอบเวอร์ชัน</h3>
+          <span class="close-modal" id="updateModalCloseBtn">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="update-desc" id="updateChangelog"></div>
+          <div class="update-date" id="updateDate"></div>
+          <button class="btn-update" id="btn-update-download">ดาวน์โหลดอัปเดต</button>
+          <div id="updateStatus" style="margin-top:8px; font-size:13px; color:#555; display:none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="repairModalBackdrop" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>ซ่อมแซมโปรแกรม</h3>
+          <span id="repairModalClose" class="close-modal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div id="repairBodyText">ต้องการซ่อมแซมโปรแกรมโดยดาวน์โหลดเวอร์ชันล่าสุดและติดตั้งทับหรือไม่?</div>
+          <div id="repairProgressContainer" class="repair-progress-container hidden">
+            <div id="repairProgressBar" class="repair-bar">0%</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="repairCancelBtn" class="btn-cancel">ยกเลิก</button>
+          <button id="repairConfirmBtn" class="btn-confirm">ตกลง</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="aboutModalBackdrop" class="modal-backdrop hidden">
+       <div class="about-card">
+            <div class="about-header">
+                <img src="https://placehold.co/40x40/7c3aed/ffffff?text=R" alt="Logo" class="about-logo" />
+                <div class="about-title">
+                    <h2>Reels Counter Pro</h2>
+                    <span class="about-version" id="app-version"></span>
+                </div>
+                <button id="aboutModalClose" class="about-close">&times;</button>
+            </div>
+            <div class="about-body">
+                <p>แอปเดสก์ท็อปสำหรับดึงยอดวิวและวันที่โพสต์ของคลิป Reels บน Instagram และ Facebook</p>
+                <ul class="about-features">
+                    <li>ดึงยอดวิวและวันที่อัตโนมัติ</li>
+                    <li>ล็อกอินผ่านคุกกี้ครั้งเดียว</li>
+                    <li>แปลงหน่วยยอดวิว (K, M) เป็นตัวเลข</li>
+                </ul>
+            </div>
+            <div class="about-footer">
+                <a href="#" id="aboutRepoLink" class="btn-secondary">🔗 ดูบน GitHub</a>
+                <button id="aboutModalOk" class="btn-primary">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Driver Status Display (นำมาจากไฟล์เดิม) -->
+    <div id="driver-floating-status" style="display:none;">
+        <span id="driverStatusDot" class="dot driver red blinking"></span>
+        <span id="driverStatusText">No Driver Active</span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
