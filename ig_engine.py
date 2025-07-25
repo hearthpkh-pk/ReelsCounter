@@ -12,7 +12,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 # Selenium Imports
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
@@ -35,20 +35,37 @@ def resource_path(relative_path):
     return os.path.abspath(relative_path)
 
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import WebDriverException
-from webdriver_manager.chrome import ChromeDriverManager
-import os
 
 def create_chrome_driver(print_to_gui=print, headless=False):
     options = webdriver.ChromeOptions()
+
+    # 1) ตั้งขนาด window ไว้ก่อน ไม่ว่าจะ headless หรือไม่
+    options.add_argument("--window-size=1024,600")
+
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-    else:
-        options.add_argument("--start-maximized")
+        options.add_argument("--disable-features=VoiceTranscriptionCapability,TranslateUI,AudioServiceOutOfProcess")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
+        options.add_experimental_option("useAutomationExtension", False)
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+
+    options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
+
+    # 2) สำหรับ headful ให้เซ็ตขนาดอีกครั้งด้วย set_window_size
+    if not headless:
+        driver.set_window_size(1024, 600)
 
     try:
         print_to_gui("🔄 พยายามเปิด Chrome แบบปกติ (WebDriverManager)...")
@@ -365,12 +382,14 @@ def count_views(driver, url_profile, max_target_clips, print_to_gui, callback):
 
                     new_links_count += 1  # ✅ นับลิงก์ใหม่จริง
 
-                    # 🔔 ส่งสถานะความคืบหน้า ยอดวิว
+                    # 🔔 ส่งสถานะความคืบหน้า พร้อม link และ views
                     callback({
                         "type": "view_fetch_progress",
                         "data": {
                             "current": len(reels_list),
-                            "total": max_target_clips
+                            "total": max_target_clips,
+                            "link": current_href,
+                            "views": parsed_views
                         }
                     })
                     print_to_gui(f"Collected: {current_href} | V: {parsed_views:,} (Raw: '{raw_view_text}'). Total: {len(reels_list)}/{max_target_clips}")

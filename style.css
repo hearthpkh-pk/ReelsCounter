@@ -38,8 +38,6 @@ body {
     background-color: var(--bg-main);
     color: var(--text-dark);
     overflow: hidden;
-    height: 100vh;
-    width: 100vw;
 }
 
 .hidden {
@@ -351,14 +349,44 @@ body {
     font-weight: 700;
 }
 
+/* สไตล์กลาง ใช้ร่วมทุกแพลตฟอร์ม */
 .status-label {
   margin-top: 8px;
   font-size: 14px;
-  color: #444;
+  font-weight: 500;
+  padding: 2px 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: all 0.3s ease-in-out;
+  display: inline-block;
+  line-height: 1.6;
 }
+
+/* แยกสีตามแพลตฟอร์ม */
+#ig-status-label {
+  color: #c32aa3; /* IG: ไล่สีม่วงสด */
+  background: linear-gradient(90deg, #f58529, #dd2a7b, #8134af);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 600;
+}
+
+#fb-status-label {
+  color: #1877f2; /* FB: น้ำเงินสด */
+  font-weight: 600;
+}
+
+/* Hover effect */
+.status-label:hover {
+  transform: scale(1.06);
+  letter-spacing: 0.4px;
+  opacity: 1;
+  transition: all 0.15s ease-in-out;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.1));
+}
+
+
 
 /* --- 5. RESULT AREA & TABLE --- */
 .result-area {
@@ -583,13 +611,13 @@ td:nth-child(2) {
 /* Driver Status Display */
 #driver-floating-status {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  top: 44px; /* ขยับลงมาจากขอบบน */
+  right: 20px; /* ยึดขอบขวา */
   background: #fff;
   padding: 5px 12px;
   border-radius: 999px;
   box-shadow: var(--shadow-md);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: var(--text-dark);
   display: inline-flex;
   align-items: center;
@@ -597,6 +625,8 @@ td:nth-child(2) {
   font-weight: 500;
   z-index: 1000;
   user-select: none;
+  width: fit-content;
+  max-width: 100%;
 }
 .dot.driver {
   height: 10px;
@@ -729,3 +759,49 @@ td:nth-child(2) {
   background-color: #d6f9e4;
   font-weight: bold;
 }
+
+/*soft hover ให้การ์ดทั้ง 3 ใบ */
+.summary-cards .card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background: white;
+}
+
+.summary-cards .card:hover {
+  transform: scale(1.03);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  
+}
+
+.card-icon.total:hover {
+  background-color: #3b82f6 !important;
+}
+.card-icon.avg:hover {
+  background-color: #22c55e !important;
+}
+.card-icon.max:hover {
+  background-color: #f59e0b !important;
+}
+
+.copy-toast {
+  position: fixed;
+  background: #10b981;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  transform: translate(-50%, -100%);
+  animation: toast-fade 1.5s ease-in-out forwards;
+  z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes toast-fade {
+  0% { opacity: 0; transform: translate(-50%, -120%); }
+  20% { opacity: 1; transform: translate(-50%, -100%); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -80%); }
+}
+

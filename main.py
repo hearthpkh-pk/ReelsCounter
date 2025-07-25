@@ -10,6 +10,14 @@ import sys
 # Import engine ที่เราแยกไฟล์ไว้
 import fb_engine
 import ig_engine
+import fb_video_engine
+import ctypes
+
+# ทำให้โปรแกรม DPI Aware (เพื่อให้ขนาดหน้าต่างถูกต้องบน Windows)
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except (AttributeError, OSError):
+    pass # ทำงานเฉพาะบน Windows ที่รองรับ
 
 
 # ✅ 1. กำหนดเวอร์ชันปัจจุบันของโปรแกรม
@@ -43,24 +51,34 @@ class Api:
             self.window.evaluate_js(f'handle_python_callback({js_response_str})')
 
     def start_scan(self, platform, data):
-        """
-        ฟังก์ชันหลักที่ถูกเรียกจาก JavaScript เมื่อผู้ใช้กดปุ่ม 'เริ่ม'
-        รับ platform ('fb' หรือ 'ig') และ data (object ที่มี reelsUrl, profileUrl, clipCount)
-        """
         print(f"API: ได้รับคำสั่ง start_scan สำหรับ '{platform}' พร้อมข้อมูล: {data}")
 
         target_function = None
         args = ()
 
         if platform == 'fb':
-            target_function = fb_engine.run_fb_scan
-            args = (
-                data.get('reelsUrl'),
-                data.get('profileUrl'),
-                data.get('clipCount'),
-                self.python_callback_to_js
-            )
+            # อ่านโหมด (default เป็น 'reel' ถ้า client เก่าไม่ได้ส่งมา)
+            mode = data.get('mode', 'reel')
+            if mode == 'video':
+                target_function = fb_video_engine.run_fb_video_scan
+                args = (
+                    data.get('reelsUrl'),
+                    int(data.get('clipCount')),
+                    self.python_callback_to_js,
+                    lambda msg: self.python_callback_to_js({"type": "log", "message": str(msg)})
+                )
+            else:
+                # branch เดิมสำหรับ Facebook Reels
+                target_function = fb_engine.run_fb_scan
+                args = (
+                    data.get('reelsUrl'),
+                    data.get('profileUrl'),
+                    data.get('clipCount'),
+                    self.python_callback_to_js
+                )
+
         elif platform == 'ig':
+            # ไม่เปลี่ยนแปลง IG ของเดิม
             target_function = ig_engine.run_ig_scan
             args = (
                 data.get('reelsUrl'),
@@ -76,6 +94,8 @@ class Api:
                 "title": "Error",
                 "message": f"Platform '{platform}' ไม่รู้จัก"
             })
+
+
 
     def open_external_link(self, url):
         """
@@ -253,7 +273,7 @@ if __name__ == '__main__':
         f'Reels Counter Pro {APP_VERSION}',
         resource_path('index.html'),
         js_api=api,
-        width=1195,
+        width=1355,
         height=950,
         min_size=(1000, 700)
     )

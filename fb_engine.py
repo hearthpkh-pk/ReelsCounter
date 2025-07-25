@@ -12,20 +12,21 @@ import time
 import platform
 import threading
 import datetime
+import queue
+import concurrent.futures
 from urllib.parse import urlparse, parse_qs
 # ใช้ Selenium Manager / webdriver-manager สำหรับจัดการ Driver อัตโนมัติ
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-
-
-
-
+from selenium.webdriver.chrome.options import Options
+import json
+from datetime import datetime, timedelta, timezone
+from selenium.webdriver.common.by import By
 # 🌐 Selenium
 from datetime import datetime as dt, timedelta
 
 from selenium.common.exceptions import WebDriverException
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -49,15 +50,9 @@ def resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.abspath(relative_path)
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 
-import json
-from datetime import datetime, timedelta, timezone
-from selenium.webdriver.common.by import By
+
 
 # ถ้าต้องการฟอร์แมตชื่อเดือนภาษาไทย
 TH_MONTHS = [
@@ -161,7 +156,6 @@ def get_reel_date_via_json_driver(driver, reel_url):
     dt_utc   = datetime.fromtimestamp(ts_use, tz=timezone.utc)
     dt_local = dt_utc + timedelta(hours=7)
     return dt_local
-
         
 
 def create_chrome_driver(print_to_gui=None, headless=True):
@@ -181,7 +175,7 @@ def create_chrome_driver(print_to_gui=None, headless=True):
         options.add_experimental_option("useAutomationExtension", False)
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1366,768")
+        options.add_argument("--window-size=1024,600")  # ขนาดเดียวกับ IG
         options.add_argument(
             "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -528,12 +522,14 @@ def count_views_fb(driver, url_reels_tab, max_target_clips, print_to_gui, callba
                             'id': current_reel_id,
                             'date_text': ''
                         })
-                        # ★ เพิ่มบล็อกนี้เพื่อส่ง progress ขึ้น JS/UI ★
+                        #// ★ ส่ง progress พร้อม link และ views ให้ JS/UI ★
                         callback({
                             "type": "view_fetch_progress",
                             "data": {
                                 "current": len(reels_data_list),
-                                "total": max_target_clips
+                                "total": max_target_clips,
+                                "link": link_href,
+                                "views": views
                             }
                         })
                         print_to_gui(f"   Collected ... Total: {len(reels_data_list)}/{max_target_clips}")
@@ -1088,9 +1084,26 @@ def fetch_fb_reel_post_date_from_profile(
      # ไม่ต้อง return อะไรแล้ว เพราะเราใช้ callback จัดการทั้งหมด
 
 
+
+# ✅ เพิ่ม Worker ที่จะใช้ใน Driver Pool
+def get_date_worker(reel_url: str):
+    worker_driver = None
+    try:
+        worker_driver = create_chrome_driver(headless=True)
+        if worker_driver:
+            dt_obj = get_reel_date_via_json_driver(worker_driver, reel_url)
+            th_months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+            formatted_date = f"{dt_obj.day} {th_months[dt_obj.month - 1]} {dt_obj.year + 543}"
+            return reel_url, formatted_date, True
+    except Exception:
+        return reel_url, None, False
+    finally:
+        if worker_driver:
+            worker_driver.quit()
+    return reel_url, None, False
+
+
 # <<< ของใหม่: เปลี่ยนชื่อเป็น run_fb_scan และรับ parameter เฉพาะที่จำเป็น + callback
-
-
 
 def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips_str, callback):
     is_reels_tab = 'reels_tab' in url_reels_tab_from_entry.lower()  
@@ -1113,19 +1126,17 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
         return
 
     driver = None
-    headless_driver_for_dates = None
+    headless_driver_for_dates = None # Standby Driver
+    driver_pool_list = [] # สำหรับเก็บ Driver ใน Pool เพื่อปิดตอนท้าย
 
-    # ✅ เคลียร์ Driver ที่ค้างจาก Manual รอบก่อน (ถ้ามี)
+    # เคลียร์ Driver ที่ค้างจาก Manual (โค้ดเดิมของคุณ)
     global standby_driver_for_dates
     if standby_driver_for_dates:
         try:
             print_to_gui(f"⚙️ DEBUG: standby_driver_for_dates is not None: {standby_driver_for_dates}")
             standby_driver_for_dates.quit()
             print_to_gui("🧹 Cleared leftover standby driver from previous manual fetch.")
-            callback({
-                "type": "driver_status",
-                "mode": "none"
-            })
+            callback({"type": "driver_status", "mode": "none"})
         except Exception as e:
             print_to_gui(f"⚠️ WARNING: Failed to close leftover standby driver: {e}")
         standby_driver_for_dates = None
@@ -1133,127 +1144,73 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
         print_to_gui("⚙️ DEBUG: No standby driver found to close.")
 
     try:
-        print("[DEBUG 3] Preparing to start WebDriver.")
+        # --- ส่วนที่ 1: ดึงยอดวิว (โค้ดเดิมของคุณทั้งหมด) ---
         callback({"type": "status", "message": "🔗 [FB] กำลังเชื่อมต่อ Driver..."})
 
-        # ✅ เตรียม standby driver ด้วย Thread ทำงานล่วงหน้า
+        # เตรียม standby driver สำหรับ Fallback ล่วงหน้า (โค้ดเดิมของคุณ)
         def setup_date_driver():
             global standby_driver_for_dates
             standby_driver_for_dates = create_chrome_driver(print_to_gui=print_to_gui, headless=True)
             fb_login(standby_driver_for_dates, callback, print_to_gui)
             standby_driver_for_dates.get(url_profile_main_from_entry)
-            print_to_gui("✅ Standby browser loaded with profile page, waiting for date scan...")
+            print_to_gui("✅ Standby browser (for fallback) loaded with profile page.")
 
-        # ✅ เริ่ม background thread ไปเลย (ไม่รอ)
         threading.Thread(target=setup_date_driver, daemon=True).start()
 
-
         driver = create_chrome_driver(print_to_gui=print_to_gui, headless=False)
-
-        callback({"type": "status", "message": "🔑 [FB] กำลังล็อกอิน..."})
-        print("[DEBUG 6] Calling fb_login...")
-        if not fb_login(driver, callback, print_to_gui):
-            return
-
-        callback({"type": "scan_feed"})
-        time.sleep(2)
-
-        callback({"type": "start_fetch_views"})
-        print("[DEBUG 7] fb_login successful.")
+        if not fb_login(driver, callback, print_to_gui): return
 
         callback({"type": "status", "message": "🔍 [FB] กำลังค้นหา Reels และยอดวิว..."})
         total_views, counted_clips, collected_reels_list = count_views_fb(
-            driver,
-            url_reels_tab_from_entry,
-            max_clips,
-            print_to_gui,
-            callback
+            driver, url_reels_tab_from_entry, max_clips, print_to_gui, callback
         )
-        collected_reels_list_fb = collected_reels_list
 
-        if collected_reels_list_fb:
-            callback({
-                "type": "initial_data",
-                "data": {"reels": collected_reels_list_fb, "total_views": total_views, "counted_clips": counted_clips}
-            })
-        else:
+        if not collected_reels_list:
             callback({"type": "status", "message": "⚠️ [FB] ไม่พบข้อมูล Reels เลย", "final": True})
             return
-
-        if driver:
-            try:
-                print_to_gui("# INFO: ปิดเบราว์เซอร์หลักหลังสแกนวิวเสร็จสิ้น...")
-                driver.quit()
-                driver = None
-            except Exception as e:
-                print_to_gui(f"# WARNING: ไม่สามารถปิดเบราว์เซอร์หลักได้: {e}")
-
-        print("[DEBUG 8] Starting date fetching phase.")
-
-        if url_profile_main_from_entry and collected_reels_list_fb:
             
-            callback({
-                "type": "driver_status",
-                "mode": "auto"
-            })
-
-            headless_driver_for_dates = standby_driver_for_dates  # ✔ แค่โยน driver ที่เตรียมไว้มาใช้
-
-            try:
-                if os.path.exists(cookie_file):
-                    headless_driver_for_dates.get("https://www.facebook.com")
-                    time.sleep(0.5)
-                    load_cookies_fb(headless_driver_for_dates, cookie_file, print_to_gui, callback)
-                    time.sleep(0.5)
-
-                headless_driver_for_dates.get(url_profile_main_from_entry)
-                time.sleep(4)
-                
+        if driver:
+            driver.quit()
+            driver = None
 
 
-                initial_scroll_attempts_target = 30
-                scroll_pause = 2
-                timeout_seconds = 200
+        # --- ส่วนที่ 2: ดึงวันที่ (ผสานระบบใหม่เข้ามา) ---
+        if url_profile_main_from_entry and collected_reels_list:
+            callback({"type": "driver_status", "mode": "auto"})
 
-                list_len = len(collected_reels_list_fb)
-                first_indices = list(range(min(4, list_len)))
-                last_indices = list(range(max(0, list_len - 4), list_len))
-                reels_to_process_indices = sorted(set(first_indices + last_indices))
-                max_index = max(reels_to_process_indices)
+            list_len = len(collected_reels_list)
+            first_indices = list(range(min(15, list_len)))
+            last_indices = list(range(max(0, list_len - 15), list_len))
+            reels_to_process_indices = sorted(set(first_indices + last_indices))
+            
+            # 🚀 ส่งสัญญาณ Spinner (โค้ดเดิมของคุณ)
+            callback({"type": "auto_date_fetch_start", "data": { "indices": reels_to_process_indices, "platform": "fb" }})
+            
+            # ✅ --- วิธีหลัก: ใช้ Driver Pool ที่รวดเร็ว ---
+            urls_to_fetch = [collected_reels_list[i]['link'] for i in reels_to_process_indices]
+            failed_indices = []
+            
+            print_to_gui(f"🚀 Starting parallel date fetch for {len(urls_to_fetch)} reels...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                future_to_url = {executor.submit(get_date_worker, url): url for url in urls_to_fetch}
+                for future in concurrent.futures.as_completed(future_to_url):
+                    url, date, success = future.result()
+                    if success:
+                        # ใช้ callback เดิมของคุณ
+                        callback({"type": "update_date_final", "data": {"link": url, "date": date}})
+                    else:
+                        # หา index ของ url ที่พลาดเพื่อส่งให้ Fallback
+                        idx = next((i for i, item in enumerate(collected_reels_list) if item['link'] == url), -1)
+                        if idx != -1:
+                            failed_indices.append(idx)
 
-                WebDriverWait(headless_driver_for_dates, 5).until(
-                    lambda d: d.execute_script("return document.readyState") == "complete"
-                )
+            # ✅ --- แผนสำรอง: ใช้ Standby Driver (โค้ดเดิมของคุณ) ---
+            if failed_indices:
+                print_to_gui(f"⚠️ {len(failed_indices)} reels failed JSON fetch, starting fallback...")
+                headless_driver_for_dates = standby_driver_for_dates # ใช้ standby driver ที่เตรียมไว้
+                if headless_driver_for_dates:    
 
-                   # ——— JSON-first Date Fetching Phase ———
-                    # ——— JSON-first Date Fetching Phase ———
-                print_to_gui(f"# DEBUG_FB: JSON-first fetch for indices: {reels_to_process_indices}")
-                # 🚀 บอก JS ว่า Auto-Mode กำลังจะดึงวันที่ – เตรียม spinner
-                callback({
-                    "type": "auto_date_fetch_start",
-                    "data": { "indices": reels_to_process_indices, "platform": "fb" }
-                })
-                failed_indices = []
-
-                # 1) ลูปลอง JSON-path ก่อนเลย
-                for idx in reels_to_process_indices:
-                    reel = collected_reels_list_fb[idx]
-                    link = reel["link"]
-                    try:
-                        dt = get_reel_date_via_json_driver(headless_driver_for_dates, link)
-                        formatted = f"{dt.day} {TH_MONTHS[dt.month-1]} {dt.year}"
-                        print_to_gui(f"# ✅ JSON fetch [{idx+1}/{len(reels_to_process_indices)}]: {formatted}")
-                        callback({
-                            "type": "update_date_final",
-                            "data": {"link": link, "date": formatted}
-                        })
-                    except Exception as e:
-                        print_to_gui(f"# ⚠️ JSON fetch failed [{idx+1}]: {e}")
-                        failed_indices.append(idx)
-
-                # 2) ถ้ามีตัวที่ JSON-path ล้ม จึงค่อย pre-scroll + scroll-loop + fallback
-                if failed_indices:
-                    print_to_gui(f"# DEBUG_FB: Fallback for indices {failed_indices} (performing pre-scroll & legacy fetch)")
+            
 
                     # ——— PRE-SCROLL + FAST-EXIT (เฉพาะ Auto-Mode) ———
                     total_needed_clips = len(collected_reels_list_fb)
@@ -1453,7 +1410,7 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
                     
                     # — Legacy Fallback: ดึงวันที่ทีละตัว …
                     for idx in failed_indices:
-                        reel = collected_reels_list_fb[idx]
+                        reel = collected_reels_list[idx]
                         fetch_fb_reel_post_date_from_profile(
                             driver_instance=headless_driver_for_dates,
                             reel_url_to_find=reel["link"],
@@ -1461,17 +1418,13 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
                             callback=callback,
                             print_to_gui=print_to_gui,
                             is_manual=False,
-                            manual_reel_index=idx      # ← ส่ง idx ไปให้ helper
+                            manual_reel_index=idx
                         )
 
                 else:
-                    print_to_gui("# DEBUG_FB: All JSON fetch succeeded – skipped fallback")
+                    print_to_gui("❌ Cannot start fallback: Standby Driver is not ready.")
                 # ——— จบ JSON-first block ———
 
-
-
-            except Exception as e_date:
-                print_to_gui(f"# DEBUG_FB: Error in stealth date driver: {e_date}")
 
         if counted_clips > 0:
             callback({"type": "status", "message": f"✅ [FB] สแกนเสร็จสมบูรณ์: {counted_clips} คลิป | รวม {total_views:,} วิว", "final": True})

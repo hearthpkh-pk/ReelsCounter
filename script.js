@@ -219,10 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCheck       = document.getElementById('ud-check');
   const btnRepair      = document.getElementById('ud-repair');
   const btnAbout       = document.getElementById('ud-about');
-  
 
-
-  
 
   // ─── ถ้า critical element หาย ให้หยุด ─────────────────
   if (!updateBlock || !updateDropdown) return;
@@ -526,13 +523,50 @@ function handle_python_callback(response) {
                 // ★ ตรงนี้ ให้เพิ่มบล็อกใหม่ทั้งสองตัว ★
 
             case 'view_fetch_progress': {
-                const { current, total } = response.data;
-                // หยุด dot-loop เก่า (ถ้ามี)
+                const { current, total, link, views } = response.data;
+
+                // — อัปเดตสถานะแบบเดิม —
                 if (typeof clearStatusDotLoop === 'function') clearStatusDotLoop(active_platform);
                 const msg = `🔍 กำลังสแกนยอดวิว ${current}/${total}`;
                 updateStatus(active_platform, msg);
                 startStatusDotLoop(active_platform, msg);
+
+                // — แทรกหรืออัปเดตแถวในตารางทันที —
+                const table = document.getElementById(`${active_platform}-table`);
+                const tbody = table.querySelector('tbody');
+                let row = tbody.querySelector(`tr[data-link="${link}"]`);
+
+                // --- Logic การไฮไลท์และใส่ Emoji ---
+                let view_text = Number(views).toLocaleString();
+                let rowClass = '';
+                if (views >= 1000000) {
+                    rowClass = 'highlight-red';
+                    view_text = `🔥 ${view_text}`;
+                } else if (views >= 100000) {
+                    rowClass = 'highlight-green';
+                }
+                // --- จบ Logic ---
+
+                if (!row) {
+                    row = tbody.insertRow();
+                    row.setAttribute('data-link', link);
+                    row.insertCell(0).innerText = current;
+                    row.insertCell(1).innerText = link;
+                    row.insertCell(2).innerText = view_text; // ใช้ตัวแปรใหม่
+                    row.insertCell(3).innerText = '…';
+                } else {
+                    row.cells[2].innerText = view_text; // อัปเดตด้วยตัวแปรใหม่
+                }
+
+                // กำหนด class ให้กับแถว
+                row.className = rowClass;
+
+                // (ถ้ามี) อัปเดตสรุปยอดรวม
+                recalculateTotalViews(active_platform);
             } break;
+
+
+
 
             case 'driver_status':
                 // ○ เมื่อโหมดกลายเป็น manual-ready → ยกเลิกล็อกปุ่ม
@@ -599,16 +633,18 @@ function handle_python_callback(response) {
 
             // ==== หลังดึงยอดวิวสำเร็จ (โชว์ยอดวิว/คลิป และสั่งขึ้นสแกนวันที่) ====
             case 'initial_data':
-                console.log("[DEBUG] initial_data received, calling populate_initial_data", response.data);
-                populate_initial_data(response.data, active_platform);
-
-                    // 1) เก็บจำนวนคลิปและยอดวิว
-                let reels = response.data && response.data.reels ? response.data.reels.length : 0;
-                let total = response.data && response.data.total_views ? response.data.total_views.toLocaleString() : 'N/A';
-                // 2) แสดงยอดวิวค้างไว้ แล้วต่อด้วย spinner status
-                const initMsg = `✅ พบ ${reels} คลิป: ${total} วิว |📅 กำลังสแกนวันที่`;
-                updateStatus(active_platform, initMsg);
-                startStatusDotLoop(active_platform, initMsg);
+                // เราไม่ต้องรัน populate_initial_data() อีก ให้ใช้ view_fetch_progress
+                // แต่ถ้าต้องการสรุปยอดวิวครบแล้วเริ่มสแกนวันที่ ก็เขียนแค่:
+                const reelsCount = response.data.reels.length;
+                const totalViews = response.data.total_views.toLocaleString();
+                updateStatus(
+                  active_platform,
+                  `✅ สแกนวิวครบ ${reelsCount} คลิป: ${totalViews} วิว | 📅 เริ่มดึงวันที่`
+                );
+                // สมมติว่าคุณมีฟังก์ชันสั่งดึงวันที่ชื่อ startDateFetch()
+                if (typeof startDateFetch === 'function') {
+                  startDateFetch(active_platform);
+                }
                 break;
                 
 
@@ -815,6 +851,10 @@ function populate_initial_data(data, platform) {
             cell2.style.textAlign = 'right';
             summaryRow.insertCell(2);
         }
+        // ✅ คำนวณยอดรวม / ค่าเฉลี่ย / ยอดสูงสุด ทันทีหลัง populate
+        recalculateTotalViews(platform);
+
+
     } catch (err) {
         console.error("[DEBUG] populate_initial_data ERROR", err, data, platform);
     }
@@ -868,6 +908,14 @@ function startScan(platform) {
     try {
         console.log("[DEBUG] startScan called for platform:", platform);
 
+        // ✅ เคลียร์ตารางและข้อมูลสรุปเก่าก่อนเริ่มสแกนใหม่
+        const tableBody = document.querySelector(`#${platform}-table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = '';
+        }
+        recalculateTotalViews(platform); // รีเซ็ตการ์ดสรุป (ยอดรวม, เฉลี่ย, สูงสุด)
+
+        // ปิดปุ่มสแกน และเอา animation ออก
         const btn = document.getElementById(`btn-start-${platform}`);
         if (btn) {
             btn.classList.remove("attention");
@@ -883,14 +931,9 @@ function startScan(platform) {
         // ✅ ดึง progress bar และเซ็ตสีให้ถูกต้อง
         const progressBar = document.querySelector(`#${platform}-progress-container .progress-bar`);
         if (progressBar) {
-            // ล้าง class เดิมหมดก่อน (กันชนกัน)
-            progressBar.className = 'progress-bar'; // เริ่มใหม่ให้แน่ใจว่ามีพื้นฐานก่อน
-
-            // ใส่คลาสตาม platform
+            progressBar.className = 'progress-bar';
             const barClass = `progress-bar-${platform}`;
             progressBar.classList.add(barClass);
-
-            // DEBUG
             console.log(`[DEBUG] เพิ่ม class: ${barClass}`);
             console.log(`[DEBUG] ได้ class สุดท้าย:`, progressBar.className);
         }
@@ -899,23 +942,30 @@ function startScan(platform) {
         updateStatus(platform, `⏳ กำลังเริ่มต้น...`);
         startStatusDotLoop(platform, `⏳ กำลังเริ่มต้น`);
 
+        // เตรียม data จากฟอร์ม
         let data = {};
         if (platform === 'fb') {
             data.profileUrl = document.getElementById('fb-profile-url').value;
-            data.reelsUrl = document.getElementById('fb-reels-url').value;
-            data.clipCount = document.getElementById('fb-clip-count').value;
+            data.reelsUrl   = document.getElementById('fb-reels-url').value;
+            data.clipCount  = document.getElementById('fb-clip-count').value;
         } else {
-            data.reelsUrl = document.getElementById('ig-reels-url').value;
-            data.clipCount = document.getElementById('ig-clip-count').value;
+            data.reelsUrl   = document.getElementById('ig-reels-url').value;
+            data.clipCount  = document.getElementById('ig-clip-count').value;
         }
+
+        // ← ตรงนี้ ให้แทรกโค้ดอ่าน mode เพิ่มเข้าไป
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        console.log('🕵️‍♀️ Selected mode =', mode);
+        data.mode = mode;   // ถ้าต้องส่งไป Python ด้วย
 
         console.log("[DEBUG] startScan sending to pywebview.api.start_scan", platform, data);
         window.pywebview.api.start_scan(platform, data);
 
-    } catch (err) {
+      } catch (err) {
         console.error("[DEBUG] startScan ERROR", err, platform);
+      }
     }
-}
+
 
 
 
@@ -1173,6 +1223,44 @@ function setupTableRowSelection(platform) {
 setupTableRowSelection('fb');
 setupTableRowSelection('ig');
 
+function enableCardCopy(cardSelector, valueId) {
+  const card = document.querySelector(cardSelector);
+  const valueEl = document.getElementById(valueId);
+
+  if (card && valueEl) {
+    card.style.cursor = 'pointer';
+    card.title = 'คลิกเพื่อคัดลอกยอดวิว';
+
+    card.addEventListener('click', () => {
+      const value = valueEl.innerText.replace(/,/g, '').trim();
+      if (!isNaN(value)) {
+        navigator.clipboard.writeText(value);
+
+        // แสดง popup "คัดลอกแล้ว"
+        const toast = document.createElement('div');
+        toast.innerText = '✅ คัดลอกแล้ว';
+        toast.className = 'copy-toast';
+        document.body.appendChild(toast);
+
+        const rect = card.getBoundingClientRect();
+        toast.style.top = `${rect.top - 10}px`;
+        toast.style.left = `${rect.left + rect.width / 2}px`;
+
+        setTimeout(() => {
+          toast.remove();
+        }, 1500);
+      }
+    });
+  }
+}
+
+// เรียกใช้งาน
+enableCardCopy('#content-ig .card', 'ig-total-views');
+enableCardCopy('#content-fb .card', 'fb-total-views');
+
+
+
+
 // --- Recalculate total views after row deletion ---
 // --- Recalculate total views after row deletion ---
 function recalculateTotalViews(platform) {
@@ -1180,21 +1268,24 @@ function recalculateTotalViews(platform) {
     if (!table) return;
 
     const tbody = table.tBodies[0];
-    // ดึงทุกแถวที่ไม่ใช่ summary-row
     const rows = Array.from(tbody.rows).filter(row => !row.classList.contains('summary-row'));
 
     let sum = 0;
+    let max = 0;
+
     rows.forEach(row => {
-        // กำหนดให้คอลัมน์ "Views" อยู่ index 2 (ถัดจาก Reel Link)
         const viewCell = row.cells[2];
         if (viewCell) {
             let txt = viewCell.innerText.replace(/[^\d]/g, '');
             let views = Number(txt) || 0;
             sum += views;
+            if (views > max) max = views;
         }
     });
 
-    // อัปเดต Summary Row
+    const avg = rows.length > 0 ? Math.round(sum / rows.length) : 0;
+
+    // === อัปเดต Summary Row ===
     const summaryRow = table.querySelector('.summary-row');
     if (summaryRow) {
         for (let i = 0; i < summaryRow.cells.length; i++) {
@@ -1207,12 +1298,16 @@ function recalculateTotalViews(platform) {
         }
     }
 
-    // **อัปเดต Status Label ด้วย**
+    // === อัปเดต Status Label ===
     const statusLabel = document.getElementById(`${platform}-status-label`);
     if (statusLabel) {
-        const reelsCount = rows.length;
-        statusLabel.innerHTML = `<span style="color: #22c55e; font-weight: bold;">&#10003; [${platform.toUpperCase()}] ${reelsCount} คลิป: ${sum.toLocaleString()} วิว</span>`;
+        statusLabel.innerHTML = `<span style="color: #22c55e; font-weight: bold;">&#10003; [${platform.toUpperCase()}] ${rows.length} คลิป: ${sum.toLocaleString()} วิว</span>`;
     }
+
+    // ✅ อัปเดต 3 การ์ดด้านบน
+    document.getElementById(`${platform}-total-views`).innerText = sum.toLocaleString();
+    document.getElementById(`${platform}-avg-views`).innerText = avg.toLocaleString();
+    document.getElementById(`${platform}-max-views`).innerText = max.toLocaleString();
 }
 
 
