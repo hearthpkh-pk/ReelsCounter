@@ -21,7 +21,7 @@ except (AttributeError, OSError):
 
 
 # ✅ 1. กำหนดเวอร์ชันปัจจุบันของโปรแกรม
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 
 # ✅ 2. ตัวรับสัญญาณ "เพิ่งติดตั้งเสร็จ"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
@@ -273,9 +273,9 @@ if __name__ == '__main__':
         f'Reels Counter Pro {APP_VERSION}',
         resource_path('index.html'),
         js_api=api,
-        width=1355,
+        width=1550,
         height=950,
-        min_size=(1000, 700)
+        min_size=(1250, 700)
     )
     api.window = window
     webview.start(debug=True) #True #False

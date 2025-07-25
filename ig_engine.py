@@ -36,41 +36,35 @@ def resource_path(relative_path):
 
 
 
-def create_chrome_driver(print_to_gui=print, headless=False):
+def create_chrome_driver(print_to_gui=print, headless=False, user_data_dir=None):
     options = webdriver.ChromeOptions()
-
-    # 1) ตั้งขนาด window ไว้ก่อน ไม่ว่าจะ headless หรือไม่
     options.add_argument("--window-size=1024,600")
+
+    # --- เพิ่มส่วนนี้เข้ามา ---
+    if user_data_dir:
+        options.add_argument(f"--user-data-dir={user_data_dir}")
+    # -------------------------
 
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
-        options.add_argument("--disable-features=VoiceTranscriptionCapability,TranslateUI,AudioServiceOutOfProcess")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-
+    
     options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     )
 
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
-
-    # 2) สำหรับ headful ให้เซ็ตขนาดอีกครั้งด้วย set_window_size
-    if not headless:
-        driver.set_window_size(1024, 600)
-
     try:
         print_to_gui("🔄 พยายามเปิด Chrome แบบปกติ (WebDriverManager)...")
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
+
+        if not headless:
+            driver.set_window_size(1024, 600)
+
         print_to_gui("✅ เปิด Chrome สำเร็จ (WebDriverManager)")
         return driver
 
@@ -421,70 +415,150 @@ def count_views(driver, url_profile, max_target_clips, print_to_gui, callback):
 # (สมมติว่าตัวแปร Path และ XPATH_POST_DATE_IG อยู่ในไฟล์เดียวกัน)
 
 # ฟังก์ชันดึงวันที่โพสต์ Instagram Reels (แทนบล็อกเดิมแบบ 1:1)
+# (วางทับฟังก์ชันเดิมใน ig_engine.py)
+
+# (วางทับฟังก์ชันเดิมใน ig_engine.py)
+
 def fetch_reel_post_date_ig(reel_url, callback, print_to_gui):
-    print_to_gui(f"# DATE_FETCHER (Parallel): Starting for: {reel_url}")
-    callback({"type":"update_date_status","data":{"link": reel_url,"status":"⌛ ..."}})
+    from datetime import datetime, timezone, timedelta
+    import re, json, time, os
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
 
-    driver_date = create_chrome_driver(print_to_gui, headless=True)
-    if not driver_date:
-        callback({"type": "update_date_status", "data": {"link": reel_url, "status": "❌ เปิดเบราว์เซอร์ไม่สำเร็จ"}})
-        return "N/A"
+    # (ฟังก์ชันย่อย find_timestamp_in_json และ try_find_json_in_scripts ไม่มีการเปลี่ยนแปลง)
+    def try_find_json_in_scripts(driver):
+        scripts = driver.find_elements(By.TAG_NAME, 'script')
+        for script in scripts:
+            script_content = script.get_attribute('innerHTML')
+            if not script_content: continue
+            if 'shortcode' in script_content and 'owner' in script_content:
+                json_match = re.search(r'({.+})', script_content)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group(1))
+                        timestamp = find_timestamp_in_json(data)
+                        if timestamp: return timestamp
+                    except json.JSONDecodeError: pass
+            if script.get_attribute('type') == 'application/ld+json':
+                try:
+                    data = json.loads(script_content)
+                    timestamp = find_timestamp_in_json(data)
+                    if timestamp: return timestamp
+                except json.JSONDecodeError: pass
+        return None
+
+    def find_timestamp_in_json(data):
+        if isinstance(data, dict):
+            for key in ['taken_at', 'created_at', 'uploadDate', 'datePublished']:
+                if key in data:
+                    value = data[key]
+                    if isinstance(value, (int, float)): return value
+                    if isinstance(value, str):
+                        try:
+                            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+                        except ValueError: continue
+            for value in data.values():
+                found = find_timestamp_in_json(value)
+                if found: return found
+        elif isinstance(data, list):
+            for item in data:
+                found = find_timestamp_in_json(item)
+                if found: return found
+        return None
     
+    # (ฟังก์ชัน load_cookies ไม่มีการเปลี่ยนแปลง)
+    def load_cookies(driver, cookie_file, print_func):
+        try:
+            with open(cookie_file, 'r') as f: cookies = json.load(f)
+            for cookie in cookies: driver.add_cookie(cookie)
+            print_func("✅ โหลด cookies IG สำหรับดึงวันที่สำเร็จ")
+            return True
+        except Exception as e:
+            print_func(f"❌ โหลด cookies สำหรับดึงวันที่ล้มเหลว: {e}")
+            return False
+
+    month_map_th = {
+        1: 'ม.ค.', 2: 'ก.พ.', 3: 'มี.ค.', 4: 'เม.ย.', 5: 'พ.ค.', 6: 'มิ.ย.',
+        7: 'ก.ค.', 8: 'ส.ค.', 9: 'ก.ย.', 10: 'ต.ค.', 11: 'พ.ย.', 12: 'ธ.ค.'
+    }
+
+    print_to_gui(f"# DATE_FETCHER: Starting for: {reel_url}")
+    callback({"type": "update_date_status", "data": {"link": reel_url, "status": "⌛ ..."}})
+
+    driver = None
     final_date_display = "N/A"
-
+    
     try:
-        driver_date.get(reel_url)
-        time.sleep(4)
+        # --- Step 1: ลองแบบ Headless ไม่ใช้คุกกี้ ---
+        driver = create_chrome_driver(print_to_gui, headless=True)
+        if not driver: raise Exception("สร้าง Headless Driver ไม่สำเร็จ")
 
-        WebDriverWait(driver_date, 20).until(
-            EC.presence_of_element_located((By.XPATH, XPATH_POST_DATE_IG))
-        )
-        time.sleep(2)
-        date_elements = driver_date.find_elements(By.XPATH, XPATH_POST_DATE_IG)
+        driver.get(reel_url)
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'body')))
+        timestamp = try_find_json_in_scripts(driver)
 
-        datetime_attr_val = None
-        title_attr_val = None
-
-
-
-        if date_elements:
-            for de_element in date_elements:
-                dt_attr = de_element.get_attribute("datetime")
-                if dt_attr:
-                    datetime_attr_val = dt_attr
-                    break
-
-            if not datetime_attr_val:
-                for de_element in date_elements:
-                    title_attr_val = de_element.get_attribute("title")
-                    if title_attr_val:
-                        break
+        # ถ้าเจอ JSON ให้ทำงานตามปกติ
+        if timestamp:
+            dt_utc = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            dt_bkk = dt_utc + timedelta(hours=7)
+            final_date_display = f"{dt_bkk.day} {month_map_th[dt_bkk.month]} {dt_bkk.year + 543}"
+            print_to_gui(f"✅ [{reel_url.split('/')[-2]}] Success (JSON)")
         
-        if datetime_attr_val:
-            date_obj = dt.fromisoformat(datetime_attr_val.replace("Z", "+00:00"))
-            month_map_th = {
-                'Jan': 'ม.ค.', 'Feb': 'ก.พ.', 'Mar': 'มี.ค.', 'Apr': 'เม.ย.',
-                'May': 'พ.ค.', 'Jun': 'มิ.ย.', 'Jul': 'ก.ค.', 'Aug': 'ส.ค.',
-                'Sep': 'ก.ย.', 'Oct': 'ต.ค.', 'Nov': 'พ.ย.', 'Dec': 'ธ.ค.'
-            }
-            final_date_display = (
-                f"{date_obj.day} "
-                f"{month_map_th.get(date_obj.strftime('%b'), date_obj.strftime('%b'))} "
-                f"{date_obj.year + 543}"
-            )
-        elif title_attr_val:
-            final_date_display = title_attr_val
+        # --- ✅ Step 2: ถ้าไม่เจอ JSON ให้ Fallback ไปใช้ XPath ทันที ---
         else:
-            final_date_display = "N/A (No Attr)"
+            driver.quit() # ปิด driver ตัวเก่า
+            print_to_gui(f"[{reel_url.split('/')[-2]}] 🤔 JSON not found, fallback to XPath via new driver.")
+            
+            # สร้าง driver ใหม่พร้อมโหลดคุกกี้เพื่อให้เข้าถึงโพสต์ที่อาจต้องล็อกอินได้
+            driver = create_chrome_driver(print_to_gui, headless=True)
+            if not driver: raise Exception("สร้าง Fallback Driver ไม่สำเร็จ")
+            
+            driver.get("https://www.instagram.com/")
+            cookie_path = os.path.join(get_application_path(), "ig_cookies.json")
+            if os.path.exists(cookie_path):
+                load_cookies(driver, cookie_path, print_to_gui)
+            
+            driver.get(reel_url) # เข้าหน้าเป้าหมายอีกครั้ง
+            
+            # ค้นหาด้วย XPath
+            time_el = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//time[@datetime]')))
+            raw_date = time_el.get_attribute("datetime")
+            dt_bkk = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=7)))
+            
+            # ✅ ลบคำว่า (XPath) ออกแล้ว
+            final_date_display = f"{dt_bkk.day} {month_map_th[dt_bkk.month]} {dt_bkk.year + 543}"
+            print_to_gui(f"⚠️ [{reel_url.split('/')[-2]}] Success (Fallback XPath)")
 
-    except TimeoutException:
-        final_date_display = "N/A (Timeout)"
-    except Exception as e_date_inner:
-        final_date_display = f"Error ({type(e_date_inner).__name__})"
+    except Exception as e:
+        print_to_gui(f"CRITICAL ERROR fetching date for {reel_url}: {e}")
+        # หากเกิดข้อผิดพลาดรุนแรง ให้ลองใช้ XPath อีกครั้งเป็นแผนสุดท้าย
+        try:
+            if driver:
+                print_to_gui(f"Attempting final XPath recovery...")
+                time_el = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, '//time[@datetime]')))
+                raw_date = time_el.get_attribute("datetime")
+                dt_bkk = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=7)))
+                final_date_display = f"{dt_bkk.day} {month_map_th.get(dt_bkk.month, '')} {dt_bkk.year + 543}"
+        except Exception as final_e:
+            print_to_gui(f"Final XPath recovery failed: {final_e}")
+            final_date_display = "N/A"
+            
     finally:
-        if driver_date:
-            driver_date.quit()
-        callback({"type": "update_date_final", "data": {"link": reel_url, "date": final_date_display}})
+        if driver:
+            driver.quit()
+
+    callback({"type": "update_date_final", "data": {"link": reel_url, "date": final_date_display}})
+    return final_date_display
+
+
+
+
+
+
+
+
+
 
 
 # <<< ของเดิม: def start_count_thread(...):
@@ -497,12 +571,10 @@ def run_ig_scan(url_from_entry, max_clips_str, callback):
     
     try: max_clips = int(max_clips_str)
     except:
-        callback({"type": "error", "title": "ข้อมูลไม่ถูกต้อง", "message": "จำนวนคลิปไม่ถูกต้อง"})
-        return
+        callback({"type": "error", "title": "ข้อมูลไม่ถูกต้อง", "message": "จำนวนคลิปไม่ถูกต้อง"}); return
     
     driver = None
-    # สร้างลิสต์รอไว้ตรงนี้เสมอ เพื่อให้แน่ใจว่ามีตัวแปรนี้อยู่
-    date_threads = [] 
+    date_threads = []
     
 
     
