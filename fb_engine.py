@@ -1,5 +1,12 @@
 # fb_core_engine.py - Part 1: Base Utils, Cookies, View Count, Date Parser
 
+# 💡 สำหรับ Cython ให้ Build ได้ — Safety Defaults
+collected_reels_list_fb = []
+scroll_pause = 1.0
+initial_scroll_attempts_target = 5
+timeout_seconds = 30
+
+
 # 📦 Built-in
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'constants')))
@@ -50,6 +57,83 @@ def resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.abspath(relative_path)
 
+
+def check_and_prepare_facebook_language(driver, url, load_cookies_func=None, js_callback=None):
+    try:
+        if load_cookies_func:
+            load_cookies_func(driver)
+
+        driver.get(url)
+
+        # ✅ ใช้รอ lang แบบฉลาด
+        WebDriverWait(driver, 6).until(
+            lambda d: d.find_element(By.TAG_NAME, 'html')
+        )
+
+        lang_attr = driver.find_element(By.TAG_NAME, 'html').get_attribute('lang')
+        if lang_attr and lang_attr.startswith("th"):
+            print("✅ Facebook ภาษาไทย (html lang=th)... ผ่าน")
+            return
+
+        page_text = driver.page_source.lower()
+        thai_keywords = ["หน้าหลัก", "วิดีโอ", "ผู้ติดต่อ", "สร้างสตอรี่"]
+        if any(word in page_text for word in thai_keywords):
+            print("✅ Facebook แสดงผลเป็นภาษาไทย (ตรวจจากข้อความ)... ผ่าน")
+            return
+
+        print(f"⚠️ Facebook ไม่ใช่ภาษาไทย (lang='{lang_attr}') → กำลังเปลี่ยนให้อัตโนมัติ...")
+
+        driver.get("https://www.facebook.com/settings/?tab=language_and_region")
+
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, '//span[contains(text(), "Account language")]'))
+        )
+
+        auto_change_language_to_thai(driver)
+
+        driver.get(url)
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.TAG_NAME, 'body'))
+        )
+
+    except Exception as e:
+        print("⚠️ ตรวจสอบหรือเปลี่ยนภาษาไม่สำเร็จ:", e)
+
+def auto_change_language_to_thai(driver):
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "Account language")]'))
+        ).click()
+        time.sleep(1)
+
+        input_lang = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.XPATH, '//div[@role="dialog"]//input[contains(@placeholder, "Search")]'))
+        )
+        input_lang.clear()
+        input_lang.send_keys("thai")
+        time.sleep(1)
+
+        thai_radio = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "ภาษาไทย")]/ancestor::div[contains(@role,"radio")]'))
+        )
+        driver.execute_script("arguments[0].click();", thai_radio)
+
+        save_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, '//div[@aria-label="Save & refresh"]'))
+        )
+        driver.execute_script("arguments[0].click();", save_button)
+        time.sleep(2)
+
+        WebDriverWait(driver, 10).until(
+            lambda d: d.find_element(By.TAG_NAME, 'html').get_attribute('lang') == 'th'
+        )
+
+        print("✅ เปลี่ยนภาษาไทยสำเร็จ (กด Save ด้วย)")
+        return True
+
+    except Exception as e:
+        print("❌ เปลี่ยนภาษาไทยไม่สำเร็จ:", e)
+        return False
 
 
 
@@ -265,11 +349,6 @@ def extract_reel_id_from_url(reel_url, print_to_gui):
     return None
 
 
-# ---- START: Paths Configuration (FB Version) ----
-# <<< ปรับแก้: ส่วนนี้สมบูรณ์ดีอยู่แล้วครับลูกพี่ เก็บไว้เหมือนเดิมได้เลย
-
-
-
 def get_application_path():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
@@ -377,6 +456,11 @@ def fb_login(driver, callback, print_to_gui):
             )
             print_to_gui("Logged into Facebook via cookies.")
             save_cookies_fb(driver, cookie_file, print_to_gui, callback)
+            check_and_prepare_facebook_language(
+                driver,
+                url="https://www.facebook.com/",
+                js_callback=callback
+            )
             return True
         except Exception:
             print_to_gui("Facebook cookies invalid. Proceeding manual login.")
@@ -408,6 +492,11 @@ def fb_login(driver, callback, print_to_gui):
                 )
                 print_to_gui("Facebook login confirmed.")
                 save_cookies_fb(driver, cookie_file, print_to_gui, callback)
+                check_and_prepare_facebook_language(
+                    driver,
+                    url="https://www.facebook.com/",
+                    js_callback=callback
+                )
                 return True
             except:
                 pass
