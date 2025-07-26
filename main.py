@@ -21,7 +21,7 @@ except (AttributeError, OSError):
 
 
 # ✅ 1. กำหนดเวอร์ชันปัจจุบันของโปรแกรม
-APP_VERSION = "1.3"
+APP_VERSION = "1.3.1"
 
 # ✅ 2. ตัวรับสัญญาณ "เพิ่งติดตั้งเสร็จ"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
