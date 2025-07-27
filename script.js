@@ -467,8 +467,7 @@ function handle_python_callback(response) {
             msg += `reels=${reelsCount}, views=${viewsTotal}`;
         } else if (response.type === 'update_date_final' || response.type === 'update_date_status') {
             msg += JSON.stringify(response.data);
-        } else if (response.type === 'alert') {
-            alert(response.title + "\n" + response.message);
+
         } else if (response.message) {
             msg += response.message;
         } else {
@@ -620,6 +619,7 @@ function handle_python_callback(response) {
                 if (response.final) {
                     const progressContainer = document.getElementById(`${active_platform}-progress-container`);
                     if (progressContainer) progressContainer.classList.add('hidden');
+                    
                 }
                 break;
 

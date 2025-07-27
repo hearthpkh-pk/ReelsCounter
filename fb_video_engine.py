@@ -11,8 +11,18 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException
 
+
+
 # ✅ 1. Import ฟังก์ชันที่คุณสร้างไว้จาก fb_engine.py
-from fb_engine import create_chrome_driver, fb_login, get_reel_date_via_json_driver
+from fb_engine import create_chrome_driver, fb_login, get_reel_date_via_json_driver, get_symbol
+from fb_engine import check_and_prepare_facebook_language, auto_change_language_to_thai
+
+def safe_utf8(text):
+    try:
+        return str(text).encode('utf-8', errors='replace').decode('utf-8')
+    except Exception:
+        return "[Encode Error]"
+
 
 def parse_views_to_int(view_str: str) -> int:
     if not view_str or not isinstance(view_str, str): return 0
@@ -52,16 +62,31 @@ def get_date_worker(video_url: str, driver_pool: queue.Queue):
 
 def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, log_func: callable):
     driver = None
-    driver_pool_list = [] # ✅ 2. สร้าง List ว่างสำหรับเก็บ Driver ใน Pool
+    driver_pool_list = [] 
     try:
         # --- ส่วนที่ 1: ดึงยอดวิว (ใช้ Driver หลักที่ล็อกอิน) ---
-        log_func("กำลังเริ่มต้น WebDriver หลัก...")
+        log_func(safe_utf8("กำลังเริ่มต้น WebDriver หลัก..."))
         driver = create_chrome_driver(headless=False)
-        log_func("กำลังล็อกอิน...")
+        if not driver:
+            log_func(safe_utf8(f"{get_symbol('error')} ไม่สามารถสร้าง Chrome Driver ได้"))
+            return
+
+        log_func(safe_utf8("กำลังล็อกอิน..."))
         fb_login(driver, lambda _: None, log_func)
-        log_func("✓ ล็อกอินสำเร็จ")
+
+        # ================== บล็อกที่แก้ไข ==================
+        # 👇 ลบเครื่องหมาย # ทั้ง 5 บรรทัดนี้ออกได้เลย
         
-        log_func(f"🔍 กำลังไปยังหน้าเพจ: {page_url}")
+        log_func(safe_utf8("กำลังตรวจสอบและตั้งค่าภาษา Facebook..."))
+        check_and_prepare_facebook_language(
+            driver,
+            url="https://www.facebook.com/",
+            js_callback=lambda data: log_func(data.get("message", safe_utf8("")))  # ส่ง log จาก callback ไปที่ log_func
+        )
+        # ================== จบบล็อกที่แก้ไข ==================
+        log_func(safe_utf8("✓ ล็อกอินสำเร็จ"))
+        
+        log_func(safe_utf8(f"{get_symbol('scan')} กำลังไปยังหน้าเพจ: {page_url}"))
         driver.get(page_url)
         header = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//span[text()='วิดีโอ']")))
         section = header.find_element(By.XPATH, "../following-sibling::div")
@@ -73,7 +98,7 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
         last_height = driver.execute_script("return document.body.scrollHeight")
         patience, patience_counter = 3, 0
         
-        log_func("🚀 เริ่มการสแกนยอดวิว...")
+        log_func(safe_utf8(f"{get_symbol('start')} เริ่มการสแกนยอดวิว..."))
         while len(all_video_data) < max_count:
             current_anchors = section.find_elements(By.XPATH, ".//a[contains(@href,'/videos/') and .//img]")
             for anchor in current_anchors:
@@ -110,10 +135,10 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
         if driver:
             driver.quit()
             driver = None
-            log_func("✓ ปิด Driver หลักแล้ว")
+            log_func(safe_utf8("✓ ปิด Driver หลักแล้ว"))
 
         # --- ส่วนที่ 2: ดึงวันที่แบบคู่ขนาน (ไม่ล็อกอิน) ---
-        log_func("✓ สแกนยอดวิวครบ, เริ่มดึงวันที่แบบไม่ล็อกอิน...")
+        log_func(safe_utf8("✓ สแกนยอดวิวครบ, เริ่มดึงวันที่แบบไม่ล็อกอิน..."))
         
         # ✅ 1. สร้าง list ของ index ที่จะทำการดึงข้อมูล
         indices_to_process = []
@@ -130,14 +155,14 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
         urls_to_fetch = [all_video_data[i]['link'] for i in indices_to_process]
 
         # ✅ 3. แทรก Callback สั่งให้ JS แสดง Spinner ตรงนี้!
-        log_func(f"กำลังส่งสัญญาณให้ UI แสดง Spinner สำหรับ {len(indices_to_process)} รายการ...")
+        log_func(safe_utf8(f"กำลังส่งสัญญาณให้ UI แสดง Spinner สำหรับ {len(indices_to_process)} รายการ..."))
         callback_func({
             "type": "auto_date_fetch_start",
             "data": { "indices": indices_to_process }
         })
         time.sleep(0.5) # หน่วงเวลาเล็กน้อยเพื่อให้ UI มีเวลาวาด Spinner
 
-        log_func(f"กำลังดึงวันที่ {len(urls_to_fetch)} คลิป ด้วย 10 Threads (ใช้ Driver Pool)...")
+        log_func(safe_utf8(f"กำลังดึงวันที่ {len(urls_to_fetch)} คลิป ด้วย 10 Threads (ใช้ Driver Pool)..."))
         
         # สร้าง Driver Pool
         pool_size = 6
@@ -159,23 +184,23 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
 
         # --- ส่วนจบการทำงาน (เหมือนเดิม) ---
         total_views = sum(item['views'] for item in all_video_data)
-        final_message = f"✅ [FB] สแกนเสร็จสมบูรณ์: {len(all_video_data)} คลิป | รวม {total_views:,} วิว"
+        final_message = safe_utf8(f"{get_symbol('ok')} [FB] สแกนเสร็จสมบูรณ์: {len(all_video_data)} คลิป | รวม {total_views:,} วิว")
         log_func(final_message)
         callback_func({"type": "update_date_final", "data": {}})
         time.sleep(0.1)
         callback_func({"type": "status", "message": "พร้อมทำงาน", "final": True})
 
     except Exception as e:
-        log_func(f"เกิดข้อผิดพลาดร้ายแรง: {e}")
-        callback_func({"type": "error", "title": "Video Scan Error", "message": f"{e}"})
+        log_func(safe_utf8(f"เกิดข้อผิดพลาดร้ายแรง: {e}"))
+        callback_func({"type": "error", "title": safe_utf8("Video Scan Error"), "message": safe_utf8(f"{e}")})
     finally:
         if driver:
             driver.quit()
         # ปิด Driver ทุกตัวใน Pool
-        log_func("กำลังปิด Driver ทั้งหมดใน Pool...")
+        log_func(safe_utf8("กำลังปิด Driver ทั้งหมดใน Pool..."))
         for d_in_pool in driver_pool_list:
             try:
                 d_in_pool.quit()
             except:
                 pass
-        log_func("ปิด WebDriver ทั้งหมดแล้ว")
+        log_func(safe_utf8("ปิด WebDriver ทั้งหมดแล้ว"))
