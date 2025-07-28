@@ -1,11 +1,10 @@
 # fb_core_engine.py - Part 1: Base Utils, Cookies, View Count, Date Parser
 
 # 💡 สำหรับ Cython ให้ Build ได้ — Safety Defaults
-collected_reels_list_fb = []
-scroll_pause = 1.0
-initial_scroll_attempts_target = 5
-timeout_seconds = 30
-
+#collected_reels_list_fb = []
+#scroll_pause = 1.0
+#initial_scroll_attempts_target = 5
+#timeout_seconds = 30
 
 # 📦 Built-in
 import sys, os
@@ -39,9 +38,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 # ⚙️ Constants (config สำหรับ Facebook)
 from constants_fb import XPATH_VIEW_COUNT, XPATH_DATE_TEXT, XPATHS_PRIORITY_LIST
-
-
-# ================== เพิ่มส่วนนี้เข้าไป ==================
 
 # ⬇️⬇️ สวิตช์หลักอยู่ตรงนี้ ⬇️⬇️
 # True = โหมดพัฒนา (เห็นอีโมจิ)
@@ -82,8 +78,6 @@ def get_symbol(symbol_type: str) -> str:
     return symbols.get(symbol_type, "")
 
 # ================== จบส่วนที่เพิ่ม ==================
-
-
 
 def safe_utf8(text):
     try:
@@ -754,128 +748,7 @@ def count_views_fb(driver, url_reels_tab, max_target_clips, print_to_gui, callba
     if counted_c < max_target_clips and max_target_clips > 0:
         print_to_gui(safe_utf8(f"Warning: FB Collected {counted_c} < target {max_target_clips}."))
     return total_v, counted_c, reels_data_list
-
-def parse_thai_date_text(date_text_input, print_to_gui):
-    """
-    แปลงข้อความวันที่/เวลาในรูปแบบต่างๆ (ไทย, อังกฤษ, สัมพัทธ์, ISO)
-    ให้เป็นรูปแบบ "วัน เดือน(ย่อ) ปี(พ.ศ.)" ที่มาตรฐาน
-    """
-    if not date_text_input or not isinstance(date_text_input, str):
-        print_to_gui(safe_utf8(f"#DEBUG_DATE_PARSE_INPUT_ERROR: Input was None or not a string: '{date_text_input}'"))
-        return "N/A"
-    
-    date_text = date_text_input.strip()
-    now = dt.now()
-    date_obj = None
-    result_to_return = "N/A" 
-
-    print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_START: Parsing input '{date_text}'"))
-
-    try:
-        if 'T' in date_text and ('Z' in date_text or ('+' in date_text.split('T')[1] if 'T' in date_text and len(date_text.split('T')) > 1 else False)):
-            try:
-                date_obj = dt.fromisoformat(date_text.replace("Z", "+00:00"))
-                print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ISO: Parsed as ISO datetime: {date_obj}"))
-            except ValueError:
-                print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ISO_ERROR: Failed to parse as ISO: '{date_text}'"))
-    except Exception as e_iso_check:
-        print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ISO_PRECHECK_ERROR: Error during ISO check for '{date_text}': {e_iso_check}"))
-
-    if not date_obj:
-        relative_patterns = {
-            r"(\d+)\s*(?:วินาที|วิ)(?:ที่แล้ว)?": lambda m: (now - timedelta(seconds=int(m.group(1)))),
-            r"(\d+)\s*(?:นาที|น\.?)(?:ที่แล้ว)?": lambda m: (now - timedelta(minutes=int(m.group(1)))),
-            r"(\d+)\s*(?:ชั่วโมง|ชม\.?)(?:ที่แล้ว)?": lambda m: (now - timedelta(hours=int(m.group(1)))),
-            r"(\d+)\s*(?:วัน(?:ที่ผ่านมา|ที่แล้ว)?|days\sago)": lambda m: (now - timedelta(days=int(m.group(1)))),
-            r"(\d+)\s*(?:สัปดาห์(?:ที่ผ่านมา|ที่แล้ว)?|อาทิตย์(?:ที่ผ่านมา|ที่แล้ว)?)": lambda m: (now - timedelta(weeks=int(m.group(1)))),
-            r"เมื่อวานนี้?(?:เวลา\s+\d{1,2}:\d{2})?|yesterday": lambda m: (now - timedelta(days=1)),
-            r"วันนี้|ขณะนี้|just\s?now|now|เพิ่งเสร็จ": lambda m: now,
-        }
-        for pattern, handler in relative_patterns.items():
-            match = re.search(pattern, date_text, re.IGNORECASE)
-            if match:
-                try:
-                    date_obj = handler(match)
-                    print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_RELATIVE: Matched relative pattern '{pattern}' -> {date_obj}"))
-                    break 
-                except Exception as e_rel_handler:
-                    print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_RELATIVE_ERROR: Handler error for pattern '{pattern}': {e_rel_handler}"))
-    
-    if not date_obj:
-        month_map_th_to_en_std_short = {'ม.ค.':'Jan','ก.พ.':'Feb','มี.ค.':'Mar','เม.ย.':'Apr','พ.ค.':'May','มิ.ย.':'Jun','ก.ค.':'Jul','ส.ค.':'Aug','ก.ย.':'Sep','ต.ค.':'Oct','พ.ย.':'Nov','ธ.ค.':'Dec'}
-        month_map_th_to_en_std_long = {'มกราคม':'Jan','กุมภาพันธ์':'Feb','มีนาคม':'Mar','เมษายน':'Apr','พฤษภาคม':'May','มิถุนายน':'Jun','กรกฎาคม':'Jul','สิงหาคม':'Aug','กันยายน':'Sep','ตุลาคม':'Oct','พฤศจิกายน':'Nov','ธันวาคม':'Dec'}
-        month_map_en_to_std_full = {'january':'Jan', 'february':'Feb', 'march':'Mar', 'april':'Apr', 'may':'May', 'june':'Jun', 'july':'Jul', 'august':'Aug', 'september':'Sep', 'october':'Oct', 'november':'Nov', 'december':'Dec'}
-        month_map_en_to_std_short = {name[:3]:std for name, std in month_map_en_to_std_full.items()}
-        all_month_maps_for_regex = {**month_map_th_to_en_std_short, **month_map_th_to_en_std_long, **month_map_en_to_std_full, **month_map_en_to_std_short}
-        date_text_cleaned = re.sub(r"\s+(?:at|เวลา)\s+\d{1,2}:\d{2}(?:\s*(?:AM|PM|น\.))?","", date_text, flags=re.IGNORECASE).strip()
-        if date_text_cleaned != date_text: print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_CLEANED: Cleaned time: '{date_text_cleaned}' from '{date_text}'"))
-
-        month_regex_parts = sorted([re.escape(m) for m in all_month_maps_for_regex.keys()], key=len, reverse=True)
-        month_pattern_str = "|".join(month_regex_parts)
-        abs_date_pattern_1 = r"(\d{1,2})\s+(" + month_pattern_str + r")(?:\s*,?\s*(\d{4}|\d{2}))?" 
-        abs_date_pattern_2 = r"(" + month_pattern_str + r")\s+(\d{1,2})(?:,?\s*(\d{4}|\d{2}))?"   
-        m_abs = None; day_str, month_text_matched, year_str = None, None, None
-        m1 = re.search(abs_date_pattern_1, date_text_cleaned, re.IGNORECASE)
-        if m1: m_abs = m1; day_str, month_text_matched, year_str = m_abs.groups(); print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ABS_P1: Matched '{date_text_cleaned}'"))
-        else:
-            m2 = re.search(abs_date_pattern_2, date_text_cleaned, re.IGNORECASE)
-            if m2: m_abs = m2; month_text_matched, day_str, year_str = m_abs.groups(); print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ABS_P2: Matched '{date_text_cleaned}'"))
-
-        if day_str and month_text_matched:
-            year_val = int(year_str) if year_str and year_str.isdigit() else now.year
-            if year_str and len(year_str) == 2 and year_str.isdigit(): year_val = 2000 + int(year_str)
-            std_month_for_strptime = month_text_matched.lower().replace('.', '')
-            normalized_month_found = False
-            for k_orig, v_std in all_month_maps_for_regex.items(): 
-                if k_orig.lower().replace('.', '') == std_month_for_strptime: std_month_for_strptime = v_std; normalized_month_found = True; break
-            if not normalized_month_found: std_month_for_strptime = std_month_for_strptime[:3].capitalize()
-            try:
-                date_obj = dt.strptime(f"{day_str} {std_month_for_strptime} {year_val}", "%d %b %Y")
-                print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ABS_SUCCESS: Parsed absolute date: {date_obj}"))
-            except ValueError as e_abs_strptime: print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_ABS_STRPTIME_ERROR: Failed for '{day_str} {std_month_for_strptime} {year_val}': {e_abs_strptime}")); date_obj = None
-    
-    if not date_obj:
-        m_slash_dash = re.search(r"(\d{1,2})[/\.-](\d{1,2})(?:[/\.-](\d{2,4}))?", date_text)
-        if m_slash_dash:
-            d_sd, mo_sd, y_str_sd = m_slash_dash.groups()
-            y_sd = int(y_str_sd) if y_str_sd and y_str_sd.isdigit() else now.year
-            if y_str_sd and len(y_str_sd) == 2 and y_str_sd.isdigit(): y_sd = 2000 + int(y_sd)
-            try:
-                date_obj = dt(year=y_sd, month=int(mo_sd), day=int(d_sd))
-                print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_SLASH_DASH: Matched d/m/y pattern: {date_obj}"))
-            except ValueError as e_sd_val: print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_SLASH_DASH_ERROR: Failed for '{d_sd}/{mo_sd}/{y_sd}': {e_sd_val}"))
-    
-    if date_obj:
-        year_be = date_obj.year + 543; display_month_th = "???"; eng_short_month_from_obj = date_obj.strftime("%b")
-        month_map_th_to_en_std_short = {'ม.ค.':'Jan','ก.พ.':'Feb','มี.ค.':'Mar','เม.ย.':'Apr','พ.ค.':'May','มิ.ย.':'Jun','ก.ค.':'Jul','ส.ค.':'Aug','ก.ย.':'Sep','ต.ค.':'Oct','พ.ย.':'Nov','ธ.ค.':'Dec'}
-        original_had_thai_month = any(th_m_key.lower() in date_text.lower() for th_m_key in month_map_th_to_en_std_short.keys())
-        if original_had_thai_month:
-            for th_name_short, en_name_short_map in month_map_th_to_en_std_short.items():
-                if en_name_short_map.lower() == eng_short_month_from_obj.lower(): display_month_th = th_name_short; break
-        if display_month_th == "???": display_month_th = eng_short_month_from_obj 
-        result_to_return = f"{date_obj.day} {display_month_th} {year_be}"
-        print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_FORMATTED_SUCCESS: Input '{date_text_input}', Formatted Output: '{result_to_return}'"))
-        return result_to_return
-    else:
-        result_to_return = date_text_input 
-        print_to_gui(safe_utf8(f"DEBUG_DATE_PARSE_FALLBACK_FINAL: Input '{date_text_input}', Output (fallback): '{result_to_return}'"))
-        return result_to_return
-    
-# <<< เพิ่มฟังก์ชันใหม่นี้เข้าไปใน fb_engine.py >>>
-
-
-# --- helper for manual jump (ใช้แค่ Auto-mode ถ้าอยาก) ---
-def get_jump_height_from_clip_count(total_clips):
-    jump_map = [
-        (30,15000),(40,22000),(50,28000),(60,34000),
-        (70,38000),(80,42000),(90,46000),(100,53000),
-        (110,60000),(120,65000),(140,76000)
-    ]
-    for limit, height in jump_map:
-        if total_clips >= limit:
-            jump_height = height
-    # helper ควร pure → คืนค่า jump_height ตรงๆ
-    return jump_height if 'jump_height' in locals() else 0
+   
 
 # Global variables
 standby_driver_for_dates = None
@@ -889,13 +762,23 @@ def run_manual_date_fetch(profile_url, reel_url, reel_index, callback):
     def print_to_gui(m):
         callback({"type":"log","message":str(m)})
 
+    # --- START: ขั้นตอนที่ 1 ---
+    # แสดงสถานะเริ่มต้นของโหมดพิเศษ
+    initial_message = f"🕹️ [โหมดพิเศษ] กำลังตรวจสอบลิงก์ที่มีปัญหา..."
     print_to_gui(safe_utf8(f"# FB_MANUAL_FETCH: Fetching date for {reel_url} …"))
+    callback({"type": "status", "message": safe_utf8(initial_message), "special": True})
+    # --- END: ขั้นตอนที่ 1 ---
 
     # reuse หรือสร้าง driver
     if standby_driver_for_dates:
         driver = standby_driver_for_dates
         manual_using_auto_driver = True
+        # --- START: ขั้นตอนที่ 2 ---
+        # แสดงสถานะว่ากำลังใช้ Standby Driver
+        reuse_message = f"🕹️ [โหมดพิเศษ] กำลังใช้ Standby Driver..."
         print_to_gui(safe_utf8(f"{get_symbol('ok')} Reusing standby driver"))
+        callback({"type": "status", "message": safe_utf8(reuse_message), "special": True})
+        # --- END: ขั้นตอนที่ 2 ---
     else:
         driver = create_chrome_driver(print_to_gui=print_to_gui, headless=True)
         standby_driver_for_dates = driver
@@ -903,345 +786,51 @@ def run_manual_date_fetch(profile_url, reel_url, reel_index, callback):
         print_to_gui(safe_utf8(f"{get_symbol('debug')} Created new headless driver"))
 
     try:
-        # Plan A: พยายามดึงข้อมูลด้วย JSON เหมือนเดิม
+        # Plan A: พยายามดึงข้อมูลด้วย JSON
         dt = get_reel_date_via_json_driver(driver, reel_url)
         formatted = f"{dt.day} {TH_MONTHS[dt.month-1]} {dt.year + 543}"
+        
+        # --- START: ขั้นตอนที่ 3 (สำเร็จ) ---
+        # แสดงสถานะว่าดึงข้อมูลสำเร็จ
+        success_message = f"🕹️ [โหมดพิเศษ] ✅ ดึงข้อมูลสำเร็จ: {formatted}"
         print_to_gui(safe_utf8(f"{get_symbol('ok')} JSON fetch success: {formatted}"))
+        callback({"type": "status", "message": safe_utf8(success_message), "special": True})
+        time.sleep(1.5) # หน่วงเวลาเล็กน้อยให้ User เห็นข้อความก่อน
+        # --- END: ขั้นตอนที่ 3 ---
+        
         callback({"type":"update_date_final","data":{"link":reel_url,"date":formatted}})
 
     except Exception as e:
-        print_to_gui(safe_utf8(f"{get_symbol('warn')} JSON fetch for {reel_url} failed: {e}"))
+        # --- START: ขั้นตอนที่ 3 (ล้มเหลว) ---
+        # แสดงสถานะว่าดึงข้อมูลล้มเหลว
+        fail_message = f"🕹️ [โหมดพิเศษ] ❌ ดึงข้อมูลล้มเหลว"
+        print_to_gui(safe_utf8(f"{get_symbol('error')} JSON fetch for {reel_url} failed: {e}"))
+        callback({"type": "status", "message": safe_utf8(fail_message), "special": True})
+        time.sleep(1.5) # หน่วงเวลาเล็กน้อยให้ User เห็นข้อความก่อน
+        # --- END: ขั้นตอนที่ 3 ---
         
-        # --- 💡 ส่วนที่เพิ่มเข้ามาเพื่อแยกการทำงาน 💡 ---
-        # ตรวจสอบว่านี่คือ URL ของ Reel หรือไม่
-        if "/reel/" in reel_url:
-            # ถ้าใช่ ให้เรียก Fallback ของ Reel
-            print_to_gui(safe_utf8("--> It's a Reel, attempting fallback..."))
-            fetch_fb_reel_post_date_from_profile(
-                driver_instance=driver,
-                reel_url_to_find=reel_url,
-                target_reel_id_to_find=extract_id_from_url(reel_url), # ดึง ID จาก URL
-                callback=callback,
-                print_to_gui=print_to_gui,
-                is_manual=True,
-                manual_reel_index=reel_index
-            )
-        else:
-            # ถ้าไม่ใช่ (เป็น Video) ให้ส่ง Error กลับไปที่ UI และจบการทำงาน
-            print_to_gui(safe_utf8("--> It's a Video, no fallback available. Reporting error."))
-            callback({
-                "type": "update_date_final", 
-                "data": {
-                    "link": reel_url, 
-                    "date": "Error"
-                }
-            })
+        callback({
+            "type": "update_date_final", 
+            "data": {
+                "link": reel_url, 
+                "date": "N/A (JSON Fail)"
+            }
+        })
 
     finally:
         manual_date_pending = False
-        # ถ้าเราเป็นคนสร้าง driver เอง ให้ปิดและรีเซ็ต
         if not manual_using_auto_driver:
             try:
                 driver.quit()
                 standby_driver_for_dates = None
                 callback({"type": "driver_status", "mode": "none"})
-                print_to_gui(safe_utf8(f"{get_symbol('ok')} Manual driver closed (created by manual)."))
+                print_to_gui(safe_utf8(f"{get_symbol('ok')} Manual driver closed."))
             except Exception as e:
                 print_to_gui(safe_utf8(f"{get_symbol('warn')} Manual driver close failed: {e}"))
         else:
-            # ถ้า reuse มาจาก auto-scan ให้เก็บค้างไว้
-            print_to_gui(safe_utf8(f"{get_symbol('ok')} Skipped driver close (auto driver reused)."))
+            print_to_gui(safe_utf8(f"{get_symbol('ok')} Skipped driver close (reused)."))
 
         # **อย่า** reset manual_using_auto_driver ตรงนี้ ให้ค้างไว้รอบต่อไป
-
-
-
-# <<< ของใหม่: เพิ่ม callback, print_to_gui และเอา parameter ที่เกี่ยวกับ Treeview ออก
-def fetch_fb_reel_post_date_from_profile(
-    driver_instance,
-    reel_url_to_find,
-    target_reel_id_to_find,
-    callback,
-    print_to_gui,
-    is_manual=False,
-    manual_reel_index: int = 0   # ← เพิ่มพารามนี้
-):
-    if is_manual:
-        # แก้ไขบรรทัดนี้โดยการลบส่วนที่เรียกหา main_profile_url ออก
-        print_to_gui(safe_utf8(f"# FB_DATE_FETCH (MANUAL MODE): Starting for Reel ID {target_reel_id_to_find}"))
-    else:
-        print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE - Driver pre-scrolled): Starting for Reel ID {target_reel_id_to_find}. Driver URL: {driver_instance.current_url[:70]}..."))
-
-    post_date_str = f"{get_symbol('wait')}..."
-
-    
-    callback({
-        "type": "update_date_status",
-        "data": {
-            "link": reel_url_to_find,
-            "status": f"{get_symbol('wait')}..."
-        }
-    })
-
-    final_date_found = "N/A (Feed Scan)"
-    
-    
-    # --- Parameters การ Scroll (ปรับได้ที่นี่) ---
-    if is_manual:
-
-        scroll_pause_time_date_fetch = 1.0 
-        # ใช้ helper map ตามจำนวนคลิป (reel_index เริ่มจาก 0 → +1)
-        scroll_jump               = get_jump_height_from_clip_count(manual_reel_index)
-        max_scrolls_in_function = 20     # จำนวน scroll สูงสุดในฟังก์ชันสำหรับ manual
-        burst_scrolls_count       = 3      # จำนวน "Burst Scroll" เริ่มต้นสำหรับ manual
-    else:  # Auto-fetch mode
-        scroll_pause_time_date_fetch = 0.25 
-        scroll_jump                 = 1000                
-        max_scrolls_in_function     = 3       
-        burst_scrolls_count         = 0
-
-    try:
-        
-        if is_manual:
-            print_to_gui(safe_utf8(f"# FB_DATE_FETCH (MANUAL MODE): Using driver pre-navigated and pre-scrolled by caller."))
-           
-            
-        else: # Auto mode
-            print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE): Using pre-loaded driver."))
-            
-            
-
-        # ส่วน Logic การเตรียมตัวแปรนี้ดีแล้วครับ ไม่ต้องแก้ไข
-        last_height_in_loop = driver_instance.execute_script("return document.body.scrollHeight")
-        scrolls_done_this_func = 0
-        print_to_gui(safe_utf8(f"{get_symbol('start')} Starting process for Reel ID {target_reel_id_to_find} (fetch_fb_reel_post_date): max_scrolls_in_func={max_scrolls_in_function}"))
-
-        reel_matched = False
-        processed_posts_this_func = set()
-    
-
-        
-        def get_date_from_post_element(post_element_arg, log_prefix=""):
-            nonlocal reel_matched, final_date_found
-
-            date_text_candidate_local = None
-            try: # 1. JS SCRIPT
-                date_text_js_specific_local = driver_instance.execute_script("""
-                    const post = arguments[0];
-                    const abbrElement = post.querySelector('abbr[title]');
-                    if (abbrElement && abbrElement.title) {
-                        if (abbrElement.title.match(/(\\d{1,2}\\s*(ม\\.ค\\.|ก\\.พ\\.|มี\\.ค\\.|เม\\.ย\\.|พ\\.ค\\.|มิ\\.ย\\.|ก\\.ค\\.|ส\\.ค\\.|ก\\.ย\\.|ต\\.ค\\.|พ\\.ย\\.|ธ\\.ค\\.)|\\d{1,2}\\s*[A-Za-z]{3,}|\\d{4}-\\d{2}-\\d{2}|เมื่อวาน|วันนี้|yesterday|\\d+\\s+(นาที|ชั่วโมง|วัน|สัปดาห์|ชม\\.|น\\.))/i)) {
-                            return abbrElement.title.trim();
-                        }
-                    }
-                    const timeElement = post.querySelector('time[datetime]');
-                    if (timeElement && timeElement.getAttribute('datetime')) {
-                        return timeElement.getAttribute('datetime').trim();
-                    }
-                    const spans = post.querySelectorAll('span');
-                    for (let span of spans) {
-                        const text = (span.textContent || span.innerText || "").trim();
-                        if (text.length > 2 && text.length < 50 && text.match(/(\\d{1,2}\\s*(?:ม\\.ค\\.|ก\\.พ\\.|มี\\.ค\\.|เม\\.ย\\.|พ\\.ค\\.|มิ\\.ย\\.|ก\\.ค\\.|ส\\.ค\\.|ก\\.ย\\.|ต\\.ค\\.|พ\\.ย\\.|ธ\\.ค\\.|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)|[A-Za-z]{3,}\\s+\\d{1,2}(?:,?\\s*\\d{4})?|\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}|เมื่อวาน|วันนี้|\\d+\\s+(?:นาที|ชั่วโมง|วัน|สัปดาห์|ชม\\.|น\\.|วิ|วินาที|ชมที่แล้ว|วันที่แล้ว|นาทีที่แล้ว))/i)) {
-                            if (!text.startsWith('#')) {
-                                return text;
-                            }
-                        }
-                    }
-                    return null;
-                """, post_element_arg)
-
-                if date_text_js_specific_local:
-                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH (JS {log_prefix}): Raw date text: '{date_text_js_specific_local}'"))
-                    date_text_candidate_local = date_text_js_specific_local
-                else:
-                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH (JS {log_prefix}): JS returned no specific date text."))
-            except Exception as e_js_fetch_date:
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH (JS {log_prefix}): Error during JS date scan: {e_js_fetch_date}"))
-
-            # 2. Python + XPath Fallback
-            if not date_text_candidate_local:
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH ({log_prefix}): JS did not yield a candidate. Trying Python XPath..."))
-                found_with_xpath_local = False
-                try:
-                    date_elements_local = post_element_arg.find_elements(By.XPATH, XPATH_DATE_TEXT)
-                    if not date_elements_local and XPATHS_PRIORITY_LIST:
-                        for prio_xpath_local in XPATHS_PRIORITY_LIST:
-                            try:
-                                current_prio_elements_local = post_element_arg.find_elements(By.XPATH, prio_xpath_local)
-                                if current_prio_elements_local:
-                                    date_elements_local = current_prio_elements_local
-                                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH (PyXPath Prio {log_prefix}): Found elements with: {prio_xpath_local}"))
-                                    break
-                            except Exception: continue
-                    
-                    potential_texts_xpath_local = []
-                    for el_local in date_elements_local:
-                        title_local = el_local.get_attribute("title")
-                        text_local = el_local.text
-                        if title_local and len(title_local.strip()) > 3 and not title_local.strip().startswith("#"): potential_texts_xpath_local.append(title_local.strip())
-                        if text_local and len(text_local.strip()) > 3 and not text_local.strip().startswith("#"): potential_texts_xpath_local.append(text_local.strip())
-                    
-                    if potential_texts_xpath_local:
-                        print_to_gui(safe_utf8(f"# FB_DATE_FETCH (PyXPath {log_prefix}): Candidates: {list(dict.fromkeys(potential_texts_xpath_local))[:3]}"))
-                        for dt_cand_xpath_local in list(dict.fromkeys(potential_texts_xpath_local)):
-                            if re.search(r"(\d{1,2}|ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|256\d|202\d|วัน|ชม|นาที|ที่แล้ว|ago|yesterday|today)", dt_cand_xpath_local, re.I):
-                                date_text_candidate_local = dt_cand_xpath_local
-                                found_with_xpath_local = True
-                                print_to_gui(safe_utf8(f"# FB_DATE_FETCH (PyXPath {log_prefix}): Selected candidate: '{date_text_candidate_local}'"))
-                                break 
-                        if not found_with_xpath_local:
-                            print_to_gui(safe_utf8(f"# FB_DATE_FETCH (PyXPath {log_prefix}): No suitable date text found via XPaths."))
-                except Exception as e_py_xpath_fetch_date:
-                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH (PyXPath {log_prefix}): Error: {e_py_xpath_fetch_date}"))
-            
-            # 3. Parse ตัวเต็งสุดท้าย
-            if date_text_candidate_local:
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH ({log_prefix}): Final candidate for parsing: '{date_text_candidate_local}'"))
-                
-                # <<< ของเดิม: parsed_date_final_local = parse_thai_date_text(date_text_candidate_local)
-                # <<< ของใหม่: ส่ง print_to_gui เข้าไปในฟังก์ชัน parse วันที่ด้วย
-                parsed_date_final_local = parse_thai_date_text(date_text_candidate_local, print_to_gui)
-                
-                print_to_gui(f"# FB_DATE_FETCH ({log_prefix}): Parsed final date: '{parsed_date_final_local}'")
-                iso_check_local = (isinstance(date_text_candidate_local, str) and date_text_candidate_local.count('-') == 2 and 'T' in date_text_candidate_local)
-                if parsed_date_final_local != "N/A" and (parsed_date_final_local != date_text_candidate_local or iso_check_local):
-                    final_date_found = parsed_date_final_local
-                    reel_matched = True
-                else:
-                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH ({log_prefix}): Final candidate '{date_text_candidate_local}' did not parse well ('{parsed_date_final_local}')."))
-            else:
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH ({log_prefix}): No date text candidate found for this post."))
-        # --- END ฟังก์ชันย่อย ---
-
-
-        # --- STRATEGY FOR AUTO-FETCH: INITIAL CHECK (NO SCROLL) ---
-        # <<< ส่วนนี้ Logic ดีมากครับ แก้ไขเพียงจุดเดียว
-        if not is_manual:
-            print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE): Attempting Initial Check for Reel ID {target_reel_id_to_find} in currently loaded DOM."))
-            try:
-                all_articles_on_page = driver_instance.find_elements(By.XPATH, "//div[@role='article']")
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE Initial Check): Found {len(all_articles_on_page)} articles."))
-                
-                for post_idx, post_cv in enumerate(all_articles_on_page):
-                    if reel_matched: break 
-                    post_uid_cv = post_cv.get_attribute("data-ft") or post_cv.get_attribute("data-testid") or str(post_cv.id)
-                    if post_uid_cv in processed_posts_this_func: continue
-                    processed_posts_this_func.add(post_uid_cv)
-                    
-                    reel_links_cv = post_cv.find_elements(By.XPATH, ".//a[contains(@href, '/reel/') or contains(@href, 'watch/?v=') or contains(@href, '/videos/') or contains(@href, 'video.php')]")
-                    for link_cv in reel_links_cv:
-                        url_cv = link_cv.get_attribute('href')
-                        
-                        # <<< ของเดิม: reel_id_cv = extract_reel_id_from_url(url_cv)
-                        # <<< ของใหม่: ส่ง print_to_gui ต่อไปให้ฟังก์ชันลูก
-                        reel_id_cv = extract_reel_id_from_url(url_cv, print_to_gui)
-
-                        if reel_id_cv == target_reel_id_to_find:
-                            print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE Initial Check): {get_symbol('ok')} Matched Reel ID {target_reel_id_to_find}! (Article index ~{post_idx})"))
-                            get_date_from_post_element(post_cv, log_prefix="Initial Check")
-                            if reel_matched: break 
-                    if reel_matched: break 
-            except Exception as e_initial_check_outer:
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE Initial Check Outer): Error - {e_initial_check_outer}"))
-        # --- END STRATEGY FOR AUTO-FETCH ---
-
-        # --- MAIN SCROLL LOOP (ทำงานถ้ายังไม่เจอ หรือถ้าเป็น manual mode) ---
-        # <<< Logic ส่วนนี้ดีเยี่ยมครับ แก้ไขเพียงจุดเดียว
-        while scrolls_done_this_func < max_scrolls_in_function and not reel_matched:
-            if is_manual or scrolls_done_this_func > 0 or (not is_manual and not reel_matched):
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH: Scroll in func {scrolls_done_this_func + 1}/{max_scrolls_in_function} → Target Reel ID {target_reel_id_to_find}"))
-                if is_manual and scrolls_done_this_func < burst_scrolls_count:
-                    driver_instance.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(0.25)
-                elif not is_manual and scrolls_done_this_func >= (max_scrolls_in_function - 2) and max_scrolls_in_function > 2 : 
-                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO): Near end, SuperBoot scroll {scrolls_done_this_func +1}."))
-                    driver_instance.execute_script("window.scrollBy(0, 3000);") 
-                else:
-                    driver_instance.execute_script(f"window.scrollBy(0, {scroll_jump});")
-                time.sleep(scroll_pause_time_date_fetch)
-            else:
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH (AUTO MODE): Initial check did not find ID {target_reel_id_to_find}. Proceeding to scroll."))
-
-            try:
-                wait_for_articles_timeout = 4 if is_manual else 2.0 
-                WebDriverWait(driver_instance, wait_for_articles_timeout).until(EC.presence_of_all_elements_located((By.XPATH, "//div[@role='article']")))
-                posts_after_scroll = driver_instance.find_elements(By.XPATH, "//div[@role='article']")
-                print_to_gui(safe_utf8(f"# FB_DATE_FETCH: Found {len(posts_after_scroll)} articles after scroll."))
-            except TimeoutException:
-                if not is_manual: break
-                posts_after_scroll = []
-            except Exception: break
-            
-            for post_as in posts_after_scroll: 
-                if reel_matched: break
-                try:
-                    post_uid_as = post_as.get_attribute("data-ft") or post_as.get_attribute("data-testid") or str(post_as.id)
-                    if post_uid_as in processed_posts_this_func: continue
-                    processed_posts_this_func.add(post_uid_as)
-                    
-                    if is_manual or scrolls_done_this_func == 0 : 
-                        driver_instance.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", post_as)
-                        time.sleep(0.3)
-
-                    reel_links_as = post_as.find_elements(By.XPATH, ".//a[contains(@href, '/reel/') or contains(@href, 'watch/?v=') or contains(@href, '/videos/') or contains(@href, 'video.php')]")
-                    for link_as in reel_links_as:
-                        url_as = link_as.get_attribute('href')
-                        
-                        # <<< ของเดิม: reel_id_as = extract_reel_id_from_url(url_as)
-                        # <<< ของใหม่: ส่ง print_to_gui ต่อไปให้ฟังก์ชันลูก
-                        reel_id_as = extract_reel_id_from_url(url_as, print_to_gui)
-                        
-                        if reel_id_as == target_reel_id_to_find:
-                            print_to_gui(safe_utf8(f"# FB_DATE_FETCH: {get_symbol('ok')} Matched Reel ID {target_reel_id_to_find} in scroll loop!"))
-                            get_date_from_post_element(post_as, log_prefix="Scroll Loop")
-                            if reel_matched: break 
-                    if reel_matched: break 
-                except StaleElementReferenceException:
-                    print_to_gui(safe_utf8("# FB_DATE_FETCH: StaleElement in scroll loop. Breaking from post loop."))
-                    break 
-                except Exception as e_post_scroll_inner:
-                    print_to_gui(safe_utf8(f"# FB_DATE_FETCH: Inner error processing post in scroll loop: {e_post_scroll_inner}"))
-
-            if reel_matched: break
-
-            if not reel_matched:
-                new_height = driver_instance.execute_script("return document.body.scrollHeight")
-                if new_height == last_height_in_loop: 
-                    if not is_manual:
-                        if scrolls_done_this_func < max_scrolls_in_function -1:
-                            driver_instance.execute_script(f"window.scrollBy(0, {scroll_jump // 2 + 50});")
-                            time.sleep(scroll_pause_time_date_fetch + 0.1)
-                            newer_height = driver_instance.execute_script("return document.body.scrollHeight")
-                            if newer_height == new_height: break
-                            last_height_in_loop = newer_height
-                        else: break
-                    else: 
-                        if scrolls_done_this_func > 2 and new_height == driver_instance.execute_script("return document.body.scrollHeight"): break
-                else: last_height_in_loop = new_height
-            scrolls_done_this_func += 1
-        
-        if not reel_matched:
-            print_to_gui(safe_utf8(f"# FB_DATE_FETCH: {get_symbol('error')} Target Reel ID {target_reel_id_to_find} not found after {scrolls_done_this_func} scrolls."))
-            final_date_found = "N/A (Not Found)"
-
-    except WebDriverException as e_wd_func:
-        final_date_found = "N/A (Driver Error)"
-        print_to_gui(safe_utf8(f"# FB_DATE_FETCH: WebDriverException in func: {e_wd_func}"))
-    except Exception as e_main_func:
-        final_date_found = "N/A (Error)"
-        print_to_gui(safe_utf8(f"# FB_DATE_FETCH: General error in func: {e_main_func}"))
-    finally:
-        # ส่งผลลัพธ์สุดท้ายกลับไปที่ UI ผ่าน callback โดยใช้ "link" เป็น key
-        print_to_gui(safe_utf8(f"# FB_DATE_FETCH: Final result for {target_reel_id_to_find} is '{final_date_found}'."))
-        callback({
-            "type": "update_date_final",
-            "data": {
-                "link": reel_url_to_find, # <-- ใช้ reel_url_to_find ที่รับเข้ามา
-                "date": final_date_found
-            }
-        })
-
-     # ไม่ต้อง return อะไรแล้ว เพราะเราใช้ callback จัดการทั้งหมด
 
 
 
@@ -1313,21 +902,13 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
     def print_to_gui(message):
         callback({"type": "log", "message": str(message)})
 
-    try:
-        max_clips = int(max_clips_str)
-        if max_clips <= 0:
-            raise ValueError(safe_utf8("จำนวนคลิปต้องมากกว่า 0"))
-    except ValueError as e:
-        callback({"type": "error", "title": safe_utf8("ข้อมูลไม่ถูกต้อง (FB)"), "message": str(e)})
-        callback({"type": "status", "message": safe_utf8(f"{get_symbol('error')} [FB] จำนวนคลิปไม่ถูกต้อง"), "final": True})
-        return
-
-    # --- ส่วนที่ 1: จัดการ Standby Driver เก่า (เหมือน Video) ---
+    # --- ส่วนที่ 1: จัดการ Standby Driver เก่า ---
     global standby_driver_for_dates
     if standby_driver_for_dates:
         try:
             print_to_gui(safe_utf8(f"{get_symbol('debug')} Closing previous standby driver..."))
             standby_driver_for_dates.quit()
+            # ✅ 1. คืนสีแดง: เมื่อเริ่มสแกนใหม่และมีการปิด Driver เก่า
             callback({"type": "driver_status", "mode": "none"})
         except Exception as e:
             print_to_gui(safe_utf8(f"{get_symbol('warn')} Failed to close leftover standby driver: {e}"))
@@ -1336,36 +917,50 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
     driver = None
     collected_reels_list = []
 
+    # --- ✅ START: แก้ไขโดยย้ายโค้ดทั้งหมดมาไว้ใน try...except บล็อกเดียว ---
     try:
-        # --- ส่วนที่ 2: สร้าง Standby Driver ใหม่ใน Thread แยก (เหมือน Video) ---
+        # --- เตรียมค่าและสร้างลิงก์โปรไฟล์อัตโนมัติให้เสร็จก่อน ---
+        try:
+            max_clips = int(max_clips_str)
+            if max_clips <= 0:
+                raise ValueError("จำนวนคลิปต้องมากกว่า 0")
+        except (ValueError, TypeError):
+            raise ValueError(f"จำนวนคลิปไม่ถูกต้อง: '{max_clips_str}'")
+
+        if not url_profile_main_from_entry or "facebook.com" not in url_profile_main_from_entry:
+            print_to_gui(safe_utf8("ลิงก์โปรไฟล์ไม่ได้ถูกระบุ, กำลังสร้างลิงก์อัตโนมัติ..."))
+            if "/reels" in url_reels_tab_from_entry:
+                url_profile_main_from_entry = url_reels_tab_from_entry.split('/reels')[0]
+                print_to_gui(safe_utf8(f"✅ ลิงก์โปรไฟล์ที่สร้างขึ้น: {url_profile_main_from_entry}"))
+            else:
+                url_profile_main_from_entry = url_reels_tab_from_entry
+        
+        # --- นิยามฟังก์ชัน setup_date_driver (ทำงานเบื้องหลัง) ---
         def setup_date_driver():
             global standby_driver_for_dates
             print_to_gui(safe_utf8("⚙️ Creating new standby driver for Reels mode..."))
             standby_driver_for_dates = create_chrome_driver(headless=True)
             if standby_driver_for_dates:
                 fb_login(standby_driver_for_dates, lambda _: None, print_to_gui)
-                standby_driver_for_dates.get(url_profile_main_from_entry)
+                standby_driver_for_dates.get(url_profile_main_from_entry) 
                 print_to_gui(safe_utf8(f"{get_symbol('ok')} Standby browser for Reels mode is ready."))
-                callback({"type": "driver_status", "mode": "manual-ready"})
+                # (เอา callback ออกจากตรงนี้เพื่อแก้ปัญหา Race Condition)
 
+        # --- สั่งให้ Thread เบื้องหลังเริ่มทำงาน ---
         threading.Thread(target=setup_date_driver, daemon=True).start()
 
-        # --- ส่วนที่ 3: สแกนยอดวิวด้วย Driver หลัก ---
+        # --- เริ่มกระบวนการสแกนหลักด้วย Driver ที่มองเห็น ---
         print_to_gui(safe_utf8("กำลังเริ่มต้น WebDriver หลัก..."))
         driver = create_chrome_driver(print_to_gui=print_to_gui, headless=False)
         if not driver:
-             callback({"type": "error", "title": "Driver Error", "message": "ไม่สามารถสร้าง Chrome Driver ได้"})
-             return
+             raise Exception("ไม่สามารถสร้าง Chrome Driver หลักได้")
              
         if not fb_login(driver, callback, print_to_gui): 
             return
         
-        print_to_gui(safe_utf8("กำลังตรวจสอบและตั้งค่าภาษา Facebook..."))
-        check_and_prepare_facebook_language(
-            driver,
-            url="https://www.facebook.com/",
-            js_callback=callback
-        )
+        check_and_prepare_facebook_language(driver, url="https://www.facebook.com/", js_callback=callback)
+        
+        # ✅ 2. คืนสีส้ม: เมื่อพร้อมเริ่มสแกนจริง
         callback({"type": "driver_status", "mode": "auto"})
         
         callback({"type": "status", "message": safe_utf8(f"{get_symbol('scan')} [FB] กำลังค้นหา Reels และยอดวิว...")})
@@ -1375,17 +970,16 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
 
         if not collected_reels_list:
             callback({"type": "status", "message": safe_utf8(f"{get_symbol('warn')} [FB] ไม่พบข้อมูล Reels เลย"), "final": True})
-            # ไม่ต้อง return ทันที แต่ให้ไปที่ finally เพื่อ cleanup
         else:
             if driver:
                 driver.quit()
                 driver = None
                 print_to_gui(safe_utf8("✓ ปิด Driver หลักที่ใช้สแกนวิวแล้ว"))
 
-            # --- ส่วนที่ 4: ดึงวันที่ ---
+            # ... (ส่วนดึงวันที่ที่เหลือเหมือนเดิม) ...
             if url_profile_main_from_entry:
                 list_len = len(collected_reels_list)
-                slice_count = 8
+                slice_count = 6
                 first_indices = list(range(min(slice_count, list_len)))
                 last_indices = list(range(max(0, list_len - slice_count), list_len))
                 reels_to_process_indices = sorted(set(first_indices + last_indices))
@@ -1398,7 +992,7 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
                 print_to_gui(safe_utf8(f"▶ เริ่มดึงวันที่ Reels (รอบแรก): รวม {len(reels_to_process_indices)} รายการ"))
                 failed_tasks = []
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
                     future_to_data = {
                         executor.submit(get_date_with_dedicated_browser_reels, url, reel_id, print_to_gui): (url, reel_id, original_index)
                         for original_index, (url, reel_id) in zip(reels_to_process_indices, zip(urls_to_fetch, ids_to_fetch))
@@ -1432,7 +1026,6 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
                         )
                         time.sleep(1)
 
-        # --- ส่วนที่ 5: สรุปผล ---
         total_views = sum(r['views'] for r in collected_reels_list)
         counted_clips = len(collected_reels_list)
         final_message = safe_utf8(f"✅ [FB] สแกนเสร็จสมบูรณ์: {counted_clips} คลิป | รวม {total_views:,} วิว")
@@ -1440,8 +1033,7 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
         callback({"type": "update_date_final", "data": {}})
         callback({"type": "status", "message": final_message, "final": True})
 
-        # --- ส่วนที่ 6: ตรวจสอบสถานะ Standby Driver (เหมือน Video) ---
-        print_to_gui(safe_utf8("Checking final standby driver state (before cleanup)..."))
+        # ✅ 3. คืนสีเขียว: เมื่องานทั้งหมดเสร็จสิ้น และ Standby Driver ควรจะพร้อมแล้ว
         try:
             if standby_driver_for_dates and standby_driver_for_dates.session_id:
                 callback({"type": "driver_status", "mode": "manual-ready"})
@@ -1451,15 +1043,14 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
             callback({"type": "driver_status", "mode": "none"})
 
     except Exception as e:
-        print(safe_utf8(f"[DEBUG FINAL] Exception caught in main try-block: {type(e).__name__} - {e}"))
+        error_message = f"[FB] เกิดข้อผิดพลาดร้ายแรง: {e}"
+        print_to_gui(safe_utf8(error_message))
         callback({"type": "error", "title": safe_utf8("Error (FB)"), "message": str(e)})
-        callback({"type": "status", "message": safe_utf8("[FB] เกิดข้อผิดพลาดร้ายแรง"), "final": True})
+        callback({"type": "status", "message": safe_utf8(error_message), "final": True})
         
     finally:
-        # --- ส่วน cleanup ที่เหลือแค่ Driver หลัก (เหมือน Video) ---
         if driver:
             try:
-                print_to_gui(safe_utf8("Closing main driver (from finally)..."))
                 driver.quit()
             except Exception: 
                 pass

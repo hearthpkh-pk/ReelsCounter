@@ -8,7 +8,6 @@ import webbrowser
 from datetime import datetime as dt
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-
 # Selenium Imports
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -24,17 +23,10 @@ from selenium.common.exceptions import (
 from constants_ig import FALLBACK_XPATHS_IG, XPATH_POST_DATE_IG
 
 
-
-
-
-
-
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.abspath(relative_path)
-
-
 
 def create_chrome_driver(print_to_gui=print, headless=False, user_data_dir=None):
     options = webdriver.ChromeOptions()
@@ -90,7 +82,6 @@ def create_chrome_driver(print_to_gui=print, headless=False, user_data_dir=None)
         print_to_gui("❌ fallback ทั้งหมดไม่สำเร็จ")
         return None
 
-
 # ---- START: Utility Functions ----
 def clean_url(url_raw):
     if not isinstance(url_raw, str):
@@ -113,7 +104,6 @@ application_path = get_application_path()
 cookie_file = os.path.join(application_path, "ig_cookies.json")
 # ---- END: Paths Configuration ----
 
-
 def save_cookies(driver, path, print_to_gui, callback):  # เพิ่ม callback ตรงนี้
     try:
         with open(path, "w") as file: json.dump(driver.get_cookies(), file)
@@ -121,8 +111,6 @@ def save_cookies(driver, path, print_to_gui, callback):  # เพิ่ม callb
         callback({"type": "save_cookie"})    # <<< ใส่ตรงนี้!
     except Exception as e: print_to_gui(f"Error saving cookies to {path}: {e}")
 
-# <<< ของเดิม: def load_cookies(driver, path):
-# <<< ของใหม่: เพิ่ม print_to_gui เป็นพารามิเตอร์
 def load_cookies(driver, path, print_to_gui, callback=None):
     try:
         with open(path, "r") as file:
@@ -149,8 +137,6 @@ def load_cookies(driver, path, print_to_gui, callback=None):
             callback({"type": "error", "title": "Error", "message": f"Error loading cookies: {e}"})
     return False
 
-# <<< ของเดิม: def handle_generic_popups_ig(driver, quick_check_timeout=1.0):
-# <<< ของใหม่: เพิ่ม print_to_gui เป็นพารามิเตอร์
 def handle_generic_popups_ig(driver, print_to_gui, quick_check_timeout=1.0):
     print_to_gui("# DEBUG_IG: Attempting to handle pop-ups...")
     handled = False
@@ -180,9 +166,6 @@ def handle_generic_popups_ig(driver, print_to_gui, quick_check_timeout=1.0):
         print_to_gui("# DEBUG_IG: No known pop-ups found/handled.")
     return handled
 
-
-# <<< ของเดิม: def ig_login(driver):
-# <<< ของใหม่: เพิ่ม callback และ print_to_gui เป็นพารามิเตอร์
 def ig_login(driver, callback, print_to_gui):
     # แจ้ง UI ว่ากำลังเริ่ม ig_login
     callback({"type": "wait_login"})
@@ -273,8 +256,6 @@ def ig_login(driver, callback, print_to_gui):
     return True
 
 
-
-
 def parse_view_count_ig(text):
     # <<< ฟังก์ชันนี้ Logic ดีเยี่ยมครับ เป็น Pure function ไม่ต้องแก้ไข
     try:
@@ -340,10 +321,7 @@ def count_views(driver, url_profile, max_target_clips, print_to_gui, callback):
     pause = 2.5
 
     print_to_gui("--- IG Phase: Collecting Reels ---")
-    # Logic การวน Loop, Scroll, ดึงข้อมูล ยอดเยี่ยมอยู่แล้วครับ คงไว้ทั้งหมด
 
-
-    
     same_links_threshold = 3  # สามารถปรับได้
     processed_hrefs = set()
     prev_reels_count = 0
@@ -410,14 +388,6 @@ def count_views(driver, url_profile, max_target_clips, print_to_gui, callback):
 
     return total_v, counted_c, reels_list
 
-
-
-# (สมมติว่าตัวแปร Path และ XPATH_POST_DATE_IG อยู่ในไฟล์เดียวกัน)
-
-# ฟังก์ชันดึงวันที่โพสต์ Instagram Reels (แทนบล็อกเดิมแบบ 1:1)
-# (วางทับฟังก์ชันเดิมใน ig_engine.py)
-
-# (วางทับฟังก์ชันเดิมใน ig_engine.py)
 
 def fetch_reel_post_date_ig(reel_url, callback, print_to_gui):
     from datetime import datetime, timezone, timedelta
@@ -551,39 +521,19 @@ def fetch_reel_post_date_ig(reel_url, callback, print_to_gui):
     callback({"type": "update_date_final", "data": {"link": reel_url, "date": final_date_display}})
     return final_date_display
 
-
-
-
-
-
-
-
-
-
-
-# <<< ของเดิม: def start_count_thread(...):
-# <<< ของใหม่: เปลี่ยนชื่อเป็น run_ig_scan และรับ parameter เฉพาะที่จำเป็น + callback
 def run_ig_scan(url_from_entry, max_clips_str, callback):
     def print_to_gui(message):
         callback({"type": "log", "message": str(message)})
 
-        
-    
     try: max_clips = int(max_clips_str)
     except:
         callback({"type": "error", "title": "ข้อมูลไม่ถูกต้อง", "message": "จำนวนคลิปไม่ถูกต้อง"}); return
     
     driver = None
     date_threads = []
-    
 
-    
     try:
         driver = create_chrome_driver(print_to_gui)
-        #service = Service(ChromeDriverManager().install())
-        #options = webdriver.ChromeOptions()
-        #options.add_argument("--start-maximized")
-        #driver = webdriver.Chrome(service=service, options=options)
 
         if not ig_login(driver, callback, print_to_gui): return
         callback({"type": "fetch_views_start"})
@@ -597,7 +547,6 @@ def run_ig_scan(url_from_entry, max_clips_str, callback):
         callback({ "type": "initial_data", "data": { "reels": collected_reels_list, "total_views": total_views }})
 
         # ==================== ✅ จุดที่เพิ่มเข้ามา (เหมือน FB) ✅ ====================
-        # หลังจากส่งข้อมูลชุดแรกลงตารางแล้ว ให้ปิดเบราว์เซอร์หลักทันที
         if driver:
             try:
                 print_to_gui("# INFO: ปิดเบราว์เซอร์หลักของ IG หลังสแกนวิวเสร็จสิ้น...")
@@ -615,8 +564,6 @@ def run_ig_scan(url_from_entry, max_clips_str, callback):
 
         if reels_to_fetch_dates_for:
             callback({"type": "status", "message": f"📅 [IG] เริ่มดึงวันที่ {len(reels_to_fetch_dates_for)} คลิป (แบบ Parallel)..."})
-
-           
 
             # (ข้างใน if จะไม่มีการสร้าง date_threads = [] ซ้ำแล้ว)
             for i, reel_to_fetch in enumerate(reels_to_fetch_dates_for):

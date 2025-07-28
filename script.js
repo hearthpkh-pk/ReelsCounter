@@ -4,11 +4,45 @@
 // =======================================================
 console.log('✅ script.js โหลดมาแล้ว');
 // --- ค่าคงที่ (ลูกพี่ต้องแก้ LOCAL_VERSION ทุกครั้งที่สร้างเวอร์ชันใหม่) ---
-const LOCAL_VERSION   = "1.3.1";
+const LOCAL_VERSION   = "1.3.2";
 const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-counter-update/main/app_version.json";
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
 let LATEST_VERSION_INFO = {};
+
+
+function animateCountUp(elementId, to, duration = 600) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+
+  const start = parseInt(el.innerText.replace(/,/g, '')) || 0;
+  const startTime = performance.now();
+
+  // ใช้ easing แบบ easeOutCubic → เร็วต้น นุ่มปลาย
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+
+  function update(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = easeOut(progress);
+    const current = Math.floor(start + (to - start) * eased);
+    el.innerText = current.toLocaleString();
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      el.innerText = to.toLocaleString(); // ปิดท้ายให้เป๊ะ
+      el.classList.add('number-bounce');
+      setTimeout(() => el.classList.remove('number-bounce'), 300);
+    }
+  }
+
+  requestAnimationFrame(update);
+}
+
+
+
+
 
 /**
  * ฟังก์ชันเปรียบเทียบเวอร์ชัน (เช่น '1.0' ใหม่กว่า '0.9')
@@ -617,7 +651,7 @@ function handle_python_callback(response) {
 
             // ==== สถานะทั่วไปจาก backend (เช่น บอกสำเร็จ/จบงาน/ข้อความพิเศษ) ====
             case 'status':
-                set_status(response.message, active_platform, response.final);
+                set_status(response.message, active_platform, response.final, response.special);
                 if (response.final) {
                     const progressContainer = document.getElementById(`${active_platform}-progress-container`);
                     if (progressContainer) progressContainer.classList.add('hidden');
@@ -650,58 +684,8 @@ function handle_python_callback(response) {
                   startDateFetch(active_platform);
                 }
                 break;
-                
 
-            // ✅ เพิ่มไว้ตรงนี้ — หลัง initial_data และก่อน update_date_status
-            case 'fb_scroll_progress':
-                if (response.data) {
-                    const { attempt, total, scroll_height, total_views, counted_clips } = response.data;
-                    const msg = `✅ พบ ${counted_clips} คลิป: ${Number(total_views).toLocaleString()} วิว |สถานะ สแกนวันที่ ${attempt}/${total} ดึงข้อมูลฟีด📋 ${scroll_height}`;
-                    updateStatus(active_platform, msg);
-                    startStatusDotLoop(active_platform, msg);
-                }
-                break;
 
-            // ✅Jump Scroll Callback //    
-
-            case 'fb_jump_status':
-                if (response.data) {
-                    const { jump_height, max_needed_index, total_clips, total_views } = response.data;
-                    const views_formatted = Number(total_views).toLocaleString();
-                    const msg = `
-                        ✅ พบ ${total_clips} คลิป: ${views_formatted} วิว |
-                        สถานะ <span style="
-                            color:#e53935;
-                            font-weight:bold;
-                            animation: pulseJump 1s infinite;
-                        ">🪂 Jump scroll to ${jump_height}px</span>`;
-                    updateStatus(active_platform, msg);
-                    startStatusDotLoop(active_platform, msg);
-                }
-                break;    
-
-            case 'fb_jump_status':
-                if (response.data) {
-                    const { jump_height, max_needed_index, total_clips, total_views, super_jump_mode } = response.data;
-                    const views_formatted = Number(total_views).toLocaleString();
-
-                    let msg = `✅ พบ ${total_clips} คลิป: ${views_formatted} วิว | สถานะ <span style="
-                        color:#e53935;
-                        font-weight:bold;
-                        animation: pulseJump 1s infinite;
-                    ">🚀 Jump scroll to ${jump_height}px</span>`;
-
-                    if (super_jump_mode) {
-                        msg += `<br><span style="color:#FF9800;font-weight:bold">⚠️ โหมดพิเศษ: พบคลิปลึกผิดปกติ, กระโดดลึกพิเศษ</span>`;
-                    }
-
-                    updateStatus(active_platform, msg);
-                    startStatusDotLoop(active_platform, msg);
-                }
-                break;
-    
-                     
-                
 
             // ==== ขณะอัปเดตวันที่ทีละแถว (ในตาราง) ====
             case 'update_date_status':
@@ -744,6 +728,8 @@ function handle_python_callback(response) {
 
             // ==== หลังอัปเดตวันที่ครบทุกคลิป ====
             case 'update_date_final':
+                // --- START: ส่วนที่ 1 (โค้ดเดิมของลูกพี่) ---
+                // Logic การอัปเดตข้อมูลวันที่ในตาราง
                 if (Array.isArray(response.data)) {
                     response.data.forEach(row => {
                         update_date_cell(row.link, row.date, active_platform);
@@ -752,13 +738,14 @@ function handle_python_callback(response) {
                     update_date_cell(response.data.link, response.data.date, active_platform);
                 }
                 stopStatusDotLoop();
-                let table = document.getElementById(`${active_platform}-table`);
-                let rows = Array.from(table.querySelectorAll('tbody tr')).filter(r=>!r.classList.contains('summary-row'));
-                let sum = rows.reduce((s,row)=>s + (Number(row.cells[2].innerText.replace(/[^\d]/g, '')) || 0), 0);
-                updateStatus(
-                    active_platform,
-                    `✅ สแกนสำเร็จ | รวมยอดวิว ${sum.toLocaleString()} จาก ${rows.length} คลิป`
-                );
+                
+                // --- ✅ START: ส่วนที่แก้ไข ---
+                // เรียกใช้ฟังก์ชันที่คำนวณยอดรวมและอัปเดตสถานะให้เอง
+                recalculateTotalViews(active_platform);
+                // --- ✅ END: จบส่วนที่แก้ไข ---
+
+                // --- START: ส่วนที่ 2 (โค้ดเดิมของลูกพี่) ---
+                // รีเซ็ตสถานะปุ่ม Manual Fetch ของ FB
                 window.manualDatePendingFB = false;
                 break;
                 
@@ -780,7 +767,22 @@ function set_status(message, platform, is_final = false) {
         return;
     }
     statusLabel.innerText = message;
-    statusLabel.style.color = is_final ? '#28a745' : '';
+
+    // --- ✅ START: ส่วนที่ผสานเข้ามา ---
+    // ตรวจสอบเนื้อหาของข้อความที่ได้รับมา
+    if (message.includes("[โหมดพิเศษ]")) {
+        // ถ้ามีคำว่า "[โหมดพิเศษ]" ให้ติด class animation และเปลี่ยนเป็นสีแดง
+        statusLabel.classList.add('special-status-pulse');
+        statusLabel.style.color = '#e53935'; // กำหนดสีแดงโดยตรง
+    } else {
+        // ถ้าเป็นข้อความสถานะปกติ ให้เอา animation ออก
+        statusLabel.classList.remove('special-status-pulse');
+        // และกำหนดสีตาม Logic เดิม (ถ้าจบงานเป็นสีเขียว, ถ้าไม่ก็สีปกติ)
+        statusLabel.style.color = is_final ? '#28a745' : '';
+    }
+    // --- ✅ END: จบส่วนที่ผสาน ---
+
+    // Logic เดิมของลูกพี่ (คงไว้)
     if (is_final) {
         const btn = document.getElementById(`btn-start-${platform}`);
         if (btn) btn.disabled = false;
@@ -899,6 +901,7 @@ function flag_table_row(link, platform) {
     }
 }
 
+
 function update_date_cell(link, new_date, platform) {
     try {
         console.log("[DEBUG] update_date_cell", { link, new_date, platform });
@@ -998,7 +1001,7 @@ function startScan(platform) {
         // เตรียม data จากฟอร์ม
         let data = {};
         if (platform === 'fb') {
-            data.profileUrl = document.getElementById('fb-profile-url').value;
+
             data.reelsUrl   = document.getElementById('fb-reels-url').value;
             data.clipCount  = document.getElementById('fb-clip-count').value;
         } else {
@@ -1098,7 +1101,7 @@ function manualFetchDate(platform) {
     const reelUrl = selectedRow.getAttribute('data-link');
     let data = { reelUrl };
     if (platform === 'fb') {
-      data.profileUrl = document.getElementById('fb-profile-url').value;
+
       data.reelIndex  = parseInt(selectedRow.cells[0].innerText, 10) || 0;
     }
     console.log(`[DEBUG] Manual fetch for ${platform}`, data);
@@ -1277,8 +1280,14 @@ setupTableRowSelection('fb');
 setupTableRowSelection('ig');
 
 function enableCardCopy(cardSelector, valueId) {
-  const card = document.querySelector(cardSelector);
   const valueEl = document.getElementById(valueId);
+  const card = valueEl?.closest(".card");
+
+  // ✅ ใส่อนิเมชันตัวเลขทันทีเมื่อค่าถูกเซ็ต
+  if (valueEl) {
+    valueEl.classList.add("animate");
+    setTimeout(() => valueEl.classList.remove("animate"), 600);
+  }
 
   if (card && valueEl) {
     card.style.cursor = 'pointer';
@@ -1289,23 +1298,37 @@ function enableCardCopy(cardSelector, valueId) {
       if (!isNaN(value)) {
         navigator.clipboard.writeText(value);
 
-        // แสดง popup "คัดลอกแล้ว"
-        const toast = document.createElement('div');
-        toast.innerText = '✅ คัดลอกแล้ว';
-        toast.className = 'copy-toast';
-        document.body.appendChild(toast);
+        // ✅ Toast ถาวร (สร้างถ้ายังไม่มี)
+        let toast = document.getElementById('copy-toast');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'copy-toast';
+          toast.className = 'copy-toast';
+          document.body.appendChild(toast);
+        }
 
+        toast.innerText = '✅ คัดลอกแล้ว';
+
+        // ตำแหน่ง
         const rect = card.getBoundingClientRect();
-        toast.style.top = `${rect.top - 10}px`;
+        toast.style.top = `${rect.top - 12}px`;
         toast.style.left = `${rect.left + rect.width / 2}px`;
 
-        setTimeout(() => {
-          toast.remove();
+        // ✅ ใช้ opacity แบบลื่น ไม่ต้อง add/remove class
+        toast.style.opacity = '1';
+        toast.style.transform = 'translate(-50%, -20px) scale(1)';
+
+        // ลบแบบนุ่มนวล
+        clearTimeout(toast._hideTimer);
+        toast._hideTimer = setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translate(-50%, -10px) scale(0.96)';
         }, 1500);
       }
     });
   }
 }
+
 
 // เรียกใช้งาน
 enableCardCopy('#content-ig .card', 'ig-total-views');
@@ -1338,7 +1361,7 @@ function recalculateTotalViews(platform) {
 
     const avg = rows.length > 0 ? Math.round(sum / rows.length) : 0;
 
-    // === อัปเดต Summary Row ===
+    // === อัปเดต Summary Row === (โค้ดเดิม)
     const summaryRow = table.querySelector('.summary-row');
     if (summaryRow) {
         for (let i = 0; i < summaryRow.cells.length; i++) {
@@ -1351,16 +1374,18 @@ function recalculateTotalViews(platform) {
         }
     }
 
-    // === อัปเดต Status Label ===
-    const statusLabel = document.getElementById(`${platform}-status-label`);
-    if (statusLabel) {
-        statusLabel.innerHTML = `<span style="color: #22c55e; font-weight: bold;">&#10003; [${platform.toUpperCase()}] ${rows.length} คลิป: ${sum.toLocaleString()} วิว</span>`;
-    }
+    // === ✅ START: ส่วนที่แก้ไข ===
+    // สร้างข้อความสรุปจบงาน
+    const finalMessage = `✅ [${platform.toUpperCase()}] ${rows.length} คลิป: ${sum.toLocaleString()} วิว`;
+    
+    // เรียกใช้ set_status เพื่ออัปเดตสถานะหลัก, หยุด animation, และเปลี่ยนเป็นสีเขียว
+    set_status(finalMessage, platform, true); // is_final = true
+    // === ✅ END: จบส่วนที่แก้ไข ===
 
-    // ✅ อัปเดต 3 การ์ดด้านบน
-    document.getElementById(`${platform}-total-views`).innerText = sum.toLocaleString();
-    document.getElementById(`${platform}-avg-views`).innerText = avg.toLocaleString();
-    document.getElementById(`${platform}-max-views`).innerText = max.toLocaleString();
+    // ✅ อัปเดต 3 การ์ดด้านบน (โค้ดเดิม)
+    animateCountUp(`${platform}-total-views`, sum);
+    animateCountUp(`${platform}-avg-views`, avg);
+    animateCountUp(`${platform}-max-views`, max);
 }
 
 
