@@ -610,6 +610,8 @@ function handle_python_callback(response) {
             }
             break;
 
+            
+
                 
            
 
@@ -698,7 +700,7 @@ function handle_python_callback(response) {
                 }
                 break;
     
-
+                     
                 
 
             // ==== ขณะอัปเดตวันที่ทีละแถว (ในตาราง) ====
@@ -769,11 +771,6 @@ function handle_python_callback(response) {
         console.error("[DEBUG] handle_python_callback CATCH ERROR:", err, response);
     }
 }
-
-
-
-
-
 
 function set_status(message, platform, is_final = false) {
     console.log("[DEBUG] set_status", {message, platform, is_final});
@@ -862,15 +859,69 @@ function populate_initial_data(data, platform) {
     }
 }
 
+// วางไว้ตรงนี้ก่อนจะเรียกใช้
+function normalizeLink(url) {
+    try {
+        let u = new URL(url);
+        return u.origin + u.pathname;
+    } catch {
+        return url;
+    }
+}
+
+// ⬇️⬇️ เพิ่มฟังก์ชันใหม่นี้เข้าไป ⬇️⬇️
+
+function flag_table_row(link, platform) {
+    try {
+        console.log("[DEBUG] Flagging row for link:", link);
+        const normalizedTarget = normalizeLink(link); // ใช้ฟังก์ชันเดิมของคุณ
+        const rows = document.querySelectorAll(`#${platform}-table tr`);
+
+        for (const row of rows) {
+            const dataLink = row.getAttribute("data-link");
+            if (normalizeLink(dataLink) === normalizedTarget) {
+                // เพิ่ม class เพื่อไฮไลท์
+                row.classList.add('suspicious-row');
+
+                // เพิ่มไอคอนแจ้งเตือน ⚠️ ที่ช่องวันที่ (ช่องที่ 4, index 3)
+                if (row.cells.length > 3) {
+                    const dateCell = row.cells[3];
+                    // เช็คก่อนว่ายังไม่มีไอคอน เพื่อป้องกันการใส่ซ้ำ
+                    if (!dateCell.innerText.startsWith('⚠️')) {
+                       dateCell.innerHTML = '⚠️ ' + dateCell.innerText;
+                    }
+                }
+                break; // เจอแล้วออกจากลูป
+            }
+        }
+    } catch (err) {
+        console.error("Error in flag_table_row:", err);
+    }
+}
+
 function update_date_cell(link, new_date, platform) {
     try {
         console.log("[DEBUG] update_date_cell", { link, new_date, platform });
-        const row = document.querySelector(`#${platform}-table tr[data-link="${link}"]`);
-        if (row && row.cells.length > 3) {
-            row.cells[3].innerText = new_date;
-            console.log("[DEBUG] update_date_cell success");
-        } else {
-            console.warn("[DEBUG] update_date_cell: Row not found or too few cells", { link, platform });
+        const normalizedTarget = normalizeLink(link);
+        const rows = document.querySelectorAll(`#${platform}-table tr`);
+        let found = false;
+
+        for (const row of rows) {
+            const dataLink = row.getAttribute("data-link");
+            if (normalizeLink(dataLink) === normalizedTarget) {
+                if (row.cells.length > 3) {
+                    row.cells[3].innerText = new_date;
+                    console.log("[DEBUG] update_date_cell success");
+                    found = true;
+                } else {
+                    console.warn("[DEBUG] update_date_cell: Too few cells", { link, platform });
+                }
+                break;
+            }
+        }
+
+        if (!found) {
+            console.warn("[DEBUG] update_date_cell: Row not found (after normalization)", { link, platform });
         }
     } catch (err) {
         console.error("[DEBUG] update_date_cell ERROR", err, link, new_date, platform);
