@@ -1271,6 +1271,12 @@ function setupTableRowSelection(platform) {
         updateDeleteBtnState(platform);
         recalculateTotalViews(platform);
     };
+    // ─── เพิ่ม! กด Delete บนคีย์บอร์ด ลบเหมือนคลิกปุ่ม ───
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Delete' && !deleteBtn.disabled) {
+        deleteBtn.click();
+      }
+    });
 
     updateDeleteBtnState(platform);
 }
