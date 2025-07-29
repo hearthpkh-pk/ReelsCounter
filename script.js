@@ -9,7 +9,8 @@ const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-count
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
 let LATEST_VERSION_INFO = {};
-
+const deletedActions = [];
+const deletedRows = [];  // เก็บ history การลบเป็นก้อน
 
 function animateCountUp(elementId, to, duration = 600) {
   const el = document.getElementById(elementId);
@@ -1221,65 +1222,97 @@ function appendLog(platform, message) {
 // --- Multi-row selection, Enable/Disable Delete Button, Delete Logic ---
 
 function setupTableRowSelection(platform) {
-    const table = document.getElementById(`${platform}-table`);
-    const deleteBtn = document.getElementById(`${platform}-delete-btn`);
-    if (!table || !deleteBtn) return;
+  const table     = document.getElementById(`${platform}-table`);
+  const deleteBtn = document.getElementById(`${platform}-delete-btn`);
+  if (!table || !deleteBtn) return;
 
-    let lastSelectedRowIndex = null;
+  let lastSelectedRowIndex = null;
+  const tbody = table.tBodies[0];
 
-    // Table row click event
-    table.addEventListener('click', function (e) {
-        const tbody = table.tBodies[0];
-        const tr = e.target.closest('tr');
-        if (!tr || tr.classList.contains('summary-row')) return;
+  // ─── เลือกแถว (Click, Shift+Click, Ctrl+Click) ───────────
+  table.addEventListener('click', e => {
+    const tr = e.target.closest('tr');
+    if (!tr || tr.classList.contains('summary-row')) return;
 
-        const allRows = Array.from(tbody.rows).filter(row => !row.classList.contains('summary-row'));
-        const rowIndex = allRows.indexOf(tr);
+    const allRows  = Array.from(tbody.rows).filter(r => !r.classList.contains('summary-row'));
+    const rowIndex = allRows.indexOf(tr);
 
-        if (e.shiftKey && lastSelectedRowIndex !== null) {
-            // Shift: select range
-            let [start, end] = [lastSelectedRowIndex, rowIndex].sort((a, b) => a - b);
-            allRows.forEach((row, i) => {
-                if (i >= start && i <= end) row.classList.add('selected');
-            });
-        } else if (e.ctrlKey || e.metaKey) {
-            // Ctrl: toggle selection (สามารถเลือกแยกแถว)
-            tr.classList.toggle('selected');
-            // ไม่ clear อันเดิม แต่ update index ล่าสุด
-            lastSelectedRowIndex = rowIndex;
-        } else {
-            // Single click: clear ทั้งหมด เลือกใหม่
-            allRows.forEach(row => row.classList.remove('selected'));
-            tr.classList.add('selected');
-            lastSelectedRowIndex = rowIndex;
-        }
-        updateDeleteBtnState(platform);
-    });
-
-    // Enable/Disable delete button
-    function updateDeleteBtnState(platform) {
-        const table = document.getElementById(`${platform}-table`);
-        const btn = document.getElementById(`${platform}-delete-btn`);
-        const selected = table.querySelectorAll('tbody tr.selected');
-        btn.disabled = selected.length === 0;
+    if (e.shiftKey && lastSelectedRowIndex !== null) {
+      let [start, end] = [lastSelectedRowIndex, rowIndex].sort((a, b) => a - b);
+      allRows.forEach((r, i) => { if (i >= start && i <= end) r.classList.add('selected'); });
+    }
+    else if (e.ctrlKey || e.metaKey) {
+      tr.classList.toggle('selected');
+      lastSelectedRowIndex = rowIndex;
+    }
+    else {
+      allRows.forEach(r => r.classList.remove('selected'));
+      tr.classList.add('selected');
+      lastSelectedRowIndex = rowIndex;
     }
 
-    // ลบแถวที่เลือก
-    deleteBtn.onclick = function () {
-        const selectedRows = Array.from(table.querySelectorAll('tbody tr.selected'));
-        selectedRows.forEach(row => row.remove());
-        updateDeleteBtnState(platform);
-        recalculateTotalViews(platform);
-    };
-    // ─── เพิ่ม! กด Delete บนคีย์บอร์ด ลบเหมือนคลิกปุ่ม ───
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Delete' && !deleteBtn.disabled) {
-        deleteBtn.click();
-      }
+    updateDeleteBtnState(platform);
+  });
+
+  // ─── เปิด/ปิดสถานะปุ่มลบ ─────────────────────────────────
+  function updateDeleteBtnState(pl) {
+    const btn      = document.getElementById(`${pl}-delete-btn`);
+    const selCount = table.querySelectorAll('tbody tr.selected').length;
+    btn.disabled   = selCount === 0;
+  }
+
+  // ─── ลบแถวที่เลือก เมื่อกดปุ่มลบ ────────────────────────────
+  deleteBtn.addEventListener('click', () => {
+    const selected = Array.from(tbody.querySelectorAll('tr.selected'));
+    if (selected.length === 0) return;
+
+    // เก็บ history เป็นก้อนเดียว (rows array)
+    deletedRows.push({
+      platform,
+      rows: selected.map(row => ({
+        html:  row.outerHTML,
+        index: Array.from(tbody.rows).indexOf(row)
+      }))
     });
 
+    // ลบจริง
+    selected.forEach(row => row.remove());
     updateDeleteBtnState(platform);
+    recalculateTotalViews(platform);
+  });
+
+  // ─── คีย์ลัด Delete & Ctrl+Z ─────────────────────────────
+  document.addEventListener('keydown', e => {
+    // ข้ามเวลาโฟกัสใน input/textarea
+    if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+
+    // Delete → ลบเหมือนกดปุ่ม
+    if (e.key === 'Delete' && !deleteBtn.disabled) {
+      e.preventDefault();
+      deleteBtn.click();
+    }
+    // Ctrl+Z/Cmd+Z → คืนก้อนล่าสุด (Undo)
+    else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
+      e.preventDefault();
+      const action = deletedRows.pop();
+      if (!action) return;
+
+      const tb = document.getElementById(`${action.platform}-table`).tBodies[0];
+      action.rows.forEach(({ html, index }) => {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = html.trim();
+        tb.insertBefore(tpl.content.firstElementChild, tb.rows[index] || null);
+      });
+
+      updateDeleteBtnState(action.platform);
+      recalculateTotalViews(action.platform);
+    }
+  });
+  // ────────────────────────────────────────────────────────────
+
+  updateDeleteBtnState(platform);
 }
+
 
 // เรียกใช้หลัง populate_initial_data ทุกครั้ง (หรือ DOMContentLoaded ครั้งแรก)
 setupTableRowSelection('fb');
