@@ -1238,4 +1238,16 @@ td:nth-child(2) {
   }
 }
 
+/* ทำให้ตำแหน่งของลูกศรชัดขึ้น */
+/* หัวตาราง sortable ไม่ให้ตัดบรรทัด */
+.sortable-index,
+.sortable-views {
+  white-space: nowrap;
+}
+.sort-arrow {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+
 

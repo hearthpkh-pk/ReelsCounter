@@ -137,43 +137,59 @@ def load_cookies(driver, path, print_to_gui, callback=None):
             callback({"type": "error", "title": "Error", "message": f"Error loading cookies: {e}"})
     return False
 
-def handle_generic_popups_ig(driver, print_to_gui, quick_check_timeout=1.0):
-    print_to_gui("# DEBUG_IG: Attempting to handle pop-ups...")
-    handled = False
+def handle_generic_popups_ig(driver, print_to_gui, quick_check_timeout=0.5):
+    """
+    จัดการ Pop-up ทั่วไปของ Instagram (Cookie, Notifications)
+    ด้วยการค้นหาแบบรวมศูนย์เพื่อประสิทธิภาพสูงสุด
+    """
+    print_to_gui("# DEBUG_IG: กำลังค้นหา pop-ups ทั่วไป...")
 
-    xpaths = [
-        '//div[@role="dialog"]//button[contains(text(), "Not Now") or contains(text(), "ไม่ตอนนี้")]',
-        '//button[text()="Not Now" or text()="ไม่ตอนนี้"]',
-        '//div[@role="dialog"]//button[contains(text(), "Allow all cookies") or contains(text(), "Accept All")]',
-        '//button[contains(text(), "Allow all cookies") or contains(text(), "ยอมรับทั้งหมด")]',
+    # --- รวม XPath ของ Pop-up ที่พบบ่อยใน IG ---
+    # เรียงลำดับความสำคัญ: Cookie มาก่อน Notifications
+    popup_xpaths = [
+        # --- Cookie Consent ---
+        '//button[contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "allow all cookies")]',
+        '//button[contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "accept all")]',
+        '//button[contains(text(), "ยอมรับทั้งหมด")]',
+
+        # --- "Not Now" for Notifications ---
+        '//div[@role="dialog"]//button[contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "not now")]',
+        '//button[contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "not now")]',
+        '//button[text()="ไม่ตอนนี้"]'
     ]
 
-    for xpath in xpaths:
-        try:
-            elements = driver.find_elements(By.XPATH, xpath)
-            for el in elements:
-                if el.is_displayed() and el.is_enabled():
-                    print_to_gui(f"# DEBUG_IG: Clicking pop-up: {xpath[:30]}...")
-                    WebDriverWait(driver, quick_check_timeout).until(EC.element_to_be_clickable(el)).click()
-                    print_to_gui(f"Pop-up clicked.")
-                    time.sleep(0.5)
-                    handled = True
-                    return True
-        except:
-            continue
+    combined_xpath = " | ".join(popup_xpaths)
 
-    if not handled:
-        print_to_gui("# DEBUG_IG: No known pop-ups found/handled.")
-    return handled
+    try:
+        # ค้นหาทุก Pop-up ที่เป็นไปได้ในครั้งเดียว
+        potential_popups = driver.find_elements(By.XPATH, combined_xpath)
 
-def ig_login(driver, callback, print_to_gui):
+        for popup in potential_popups:
+            # เช็คว่าแสดงผลและพร้อมให้คลิก
+            if popup.is_displayed() and popup.is_enabled():
+                try:
+                    # รอแค่เสี้ยววินาทีเพื่อให้แน่ใจว่าคลิกได้
+                    WebDriverWait(driver, quick_check_timeout).until(EC.element_to_be_clickable(popup)).click()
+                    print_to_gui(safe_utf8(f"✓ คลิกปิด Pop-up IG สำเร็จ (Text: '{popup.text[:20]}...')"))
+                    time.sleep(0.7)  # รอให้ UI หายไปสนิท
+                    return True # จัดการสำเร็จ ออกทันที
+                except Exception:
+                    # หากคลิกตัวนี้ไม่ได้ ให้ลองตัวต่อไปในลิสต์ที่เจอ
+                    continue
+    except Exception as e:
+        print_to_gui(safe_utf8(f"# DEBUG_IG: เกิดข้อผิดพลาดขณะค้นหา pop-ups: {e}"))
+
+    print_to_gui("# DEBUG_IG: ไม่พบ Pop-up ที่ต้องจัดการ")
+    return False
+
+def ig_login(driver, callback, print_to_gui, target_url=None):
     # แจ้ง UI ว่ากำลังเริ่ม ig_login
     callback({"type": "wait_login"})
     print_to_gui("# DEBUG_IG: Starting ig_login...")
 
     # เปิดหน้า Instagram หลัก
-    driver.get("https://www.instagram.com/")
-    time.sleep(1)
+    driver.get(target_url or "https://www.instagram.com/")
+    time.sleep(0.5)  # 💡 รอ DOM โหลดก่อนจัดการ popup
     handle_generic_popups_ig(driver, print_to_gui)
 
     # หากมีไฟล์คุกกี้ ให้ลองโหลดก่อน
@@ -181,23 +197,29 @@ def ig_login(driver, callback, print_to_gui):
         try:
             print_to_gui(f"# DEBUG_IG: Loading cookies from: {cookie_file}")
             if load_cookies(driver, cookie_file, print_to_gui, callback):
-                # รีเฟรชหน้าเพื่อให้ cookies ทำงาน
-                driver.get("https://www.instagram.com/")
-                time.sleep(2)
+                
+                # สำหรับ IG ที่ไม่มีเบราว์เซอร์สแตนบาย เราใช้ refresh เพื่อความเร็วได้
+                print_to_gui("# DEBUG_IG: โหลดคุกกี้แล้ว กำลังรีเฟรชหน้า...")
+                driver.refresh()
+                
+                # จัดการ pop-up ที่อาจจะโผล่มาอีกครั้งหลัง login
                 handle_generic_popups_ig(driver, print_to_gui)
 
                 # ตรวจสอบว่า login สำเร็จผ่าน cookies
-                WebDriverWait(driver, 10).until(
-                    EC.any_of(
-                        EC.presence_of_element_located((By.XPATH, '//a[contains(@href, "/direct/inbox")]')),
-                        EC.presence_of_element_located((By.XPATH, '//img[contains(@alt, "profile picture")]'))
+                try:
+                    WebDriverWait(driver, 10).until(
+                        EC.any_of(
+                            EC.presence_of_element_located((By.XPATH, '//a[contains(@href, "/direct/inbox")]')),
+                            EC.presence_of_element_located((By.XPATH, '//*[local-name()="svg" and @aria-label="Messenger"]')),
+                            EC.presence_of_element_located((By.XPATH, '//img[contains(@alt, "profile picture")]'))
+                        )
                     )
-                )
-                print_to_gui("✓ Logged in via cookies.")
-                callback({"type": "cookie_loaded"})
-                return True
-        except TimeoutException:
-            print_to_gui("Cookies expired/invalid. Manual login needed.")
+                    print_to_gui("✓ ล็อกอิน IG ผ่านคุกกี้สำเร็จ")
+                    callback({"type": "cookie_loaded"})
+                    return True
+                except TimeoutException:
+                    print_to_gui("คุกกี้ IG หมดอายุ/ไม่ถูกต้อง ต้องล็อกอินเอง")
+
         except Exception as e:
             print_to_gui(f"Cookie login error: {e}. Manual login.")
 
@@ -228,7 +250,7 @@ def ig_login(driver, callback, print_to_gui):
 
     # วนรอจน user ล็อกอินเสร็จสมบูรณ์
     start_time = time.time()
-    while time.time() - start_time < 300:
+    while time.time() - start_time < 3000:
         url_current = driver.current_url.lower()
         if not any(fragment in url_current for fragment in ["accounts/login", "challenge"]):
             try:

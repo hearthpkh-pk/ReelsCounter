@@ -4,7 +4,7 @@
 // =======================================================
 console.log('✅ script.js โหลดมาแล้ว');
 // --- ค่าคงที่ (ลูกพี่ต้องแก้ LOCAL_VERSION ทุกครั้งที่สร้างเวอร์ชันใหม่) ---
-const LOCAL_VERSION   = "1.3.2";
+const LOCAL_VERSION   = "1.4";
 const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-counter-update/main/app_version.json";
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
@@ -269,6 +269,66 @@ document.addEventListener('DOMContentLoaded', () => {
       updateDropdown.classList.add('hidden');
     }
   });
+
+  // ─── เพิ่มการเรียงยอดวิว ───────────────────────────────
+  ['fb','ig'].forEach(platform => {
+    const table = document.getElementById(`${platform}-table`);
+    if (!table) return;
+    const tbody = table.tBodies[0];
+
+    // ─── Sort by Index (#) ──────────────────────────────────
+    const idxTh = table.querySelector('th:nth-child(1)');
+    idxTh.classList.add('sortable-index');
+    idxTh.insertAdjacentHTML('beforeend',
+      ' <span class="sort-arrow ml-1"></span>'
+    );
+    const idxArrow = idxTh.querySelector('.sort-arrow');
+    // เซ็ตลูกศร default
+    idxArrow.textContent = '▼';
+    let ascIndex = true;
+    idxTh.style.cursor = 'pointer';
+    idxTh.title = 'คลิกเพื่อเรียงลำดับ #';
+    idxTh.addEventListener('click', () => {
+      const rows = Array.from(tbody.rows)
+                        .filter(r => !r.classList.contains('summary-row'));
+      rows.sort((a, b) => {
+        const ia = parseInt(a.cells[0].innerText,10) || 0;
+        const ib = parseInt(b.cells[0].innerText,10) || 0;
+        return ascIndex ? ia - ib : ib - ia;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+      ascIndex = !ascIndex;
+      idxArrow.textContent = ascIndex ? '▲' : '▼';
+    });
+
+    // ─── Sort by Views ──────────────────────────────────────
+    const viewsTh = table.querySelector('th .views');
+    viewsTh.classList.add('sortable-views');
+    viewsTh.insertAdjacentHTML('beforeend',
+      ' <span class="sort-arrow ml-1"></span>'
+    );
+    const viewsArrow = viewsTh.querySelector('.sort-arrow');
+    // เซ็ตลูกศร default
+    viewsArrow.textContent = '▼';
+    let ascViews = false;
+    viewsTh.style.cursor = 'pointer';
+    viewsTh.title = 'คลิกเพื่อเรียงยอดวิว';
+    viewsTh.addEventListener('click', () => {
+      const rows = Array.from(tbody.rows)
+                        .filter(r => !r.classList.contains('summary-row'));
+      rows.sort((a, b) => {
+        const va = parseInt(a.cells[2].innerText.replace(/\D/g,''),10) || 0;
+        const vb = parseInt(b.cells[2].innerText.replace(/\D/g,''),10) || 0;
+        return ascViews ? va - vb : vb - va;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+      ascViews = !ascViews;
+      viewsArrow.textContent = ascViews ? '▲' : '▼';
+    });
+  });
+    // ─────────────────────────────────────────────────────────
+
+  // ────────────────────────────────────────────────────────
 
   // ─── 2) เมนูย่อย ───────────────────────────────────────
 

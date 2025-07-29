@@ -29,7 +29,8 @@ from datetime import datetime, timedelta, timezone
 from selenium.webdriver.common.by import By
 # 🌐 Selenium
 from datetime import datetime as dt, timedelta
-
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import WebDriverException
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -106,7 +107,6 @@ def check_and_prepare_facebook_language(driver, url, load_cookies_func=None, js_
     # สร้างฟังก์ชัน log_func จาก js_callback เพื่อให้เรียกใช้งานง่าย
     def log_func(message):
         if js_callback:
-            # รูปแบบ callback ของคุณต้องการ Dictionary
             js_callback({"type": "log", "message": message})
 
     try:
@@ -114,74 +114,168 @@ def check_and_prepare_facebook_language(driver, url, load_cookies_func=None, js_
             load_cookies_func(driver)
 
         driver.get(url)
-       
-        WebDriverWait(driver, 6).until(
-            lambda d: d.find_element(By.TAG_NAME, 'html')
-        )
+        
+        WebDriverWait(driver, 6).until(lambda d: d.find_element(By.TAG_NAME, 'html'))
 
+        # --- START: แก้ไขเงื่อนไขการตรวจสอบ ---
+
+        # 1. ตรวจสอบจาก Attribute 'lang' (เหมือนเดิม เร็วที่สุด)
         lang_attr = driver.find_element(By.TAG_NAME, 'html').get_attribute('lang')
         if lang_attr and lang_attr.startswith("th"):
             log_func(safe_utf8("[OK] Facebook เป็นภาษาไทยอยู่แล้ว (html lang=th)"))
             return
 
-        page_text = driver.page_source.lower()
-        thai_keywords = ["หน้าหลัก", "วิดีโอ", "ผู้ติดต่อ", "สร้างสตอรี่"]
-        if any(word in page_text for word in thai_keywords):
-            log_func(safe_utf8("[OK] Facebook เป็นภาษาไทยอยู่แล้ว (ตรวจจากข้อความ)"))
+        # 2. ตรวจสอบจาก Keywords ภาษาไทย (ใช้วิธีที่เร็วกว่า page_source)
+        thai_keywords_xpath = '//*[contains(text(), "หน้าหลัก") or contains(text(), "วิดีโอ") or contains(text(), "ผู้ติดต่อ") or contains(text(), "สร้างสตอรี่")]'
+        try:
+            # รอสูงสุดแค่ 1 วินาที ถ้าเจอคำไหนก่อนก็ถือว่าเป็นไทยทันที
+            WebDriverWait(driver, 1).until(
+                EC.presence_of_element_located((By.XPATH, thai_keywords_xpath))
+            )
+            log_func(safe_utf8("[OK] Facebook เป็นภาษาไทยอยู่แล้ว (ตรวจสอบจาก Keyword)"))
             return
+        except TimeoutException:
+            # ไม่เจอ Keyword ภาษาไทย ก็ไม่เป็นไร ดำเนินการต่อได้เลย
+            pass
 
+        # ถ้ามาถึงตรงนี้ได้ แปลว่าไม่ใช่ภาษาไทยแน่นอน → ดำเนินการเปลี่ยนภาษา
         log_func(safe_utf8(f"[WARN] Facebook ไม่ใช่ภาษาไทย (lang={lang_attr}) → กำลังเปลี่ยนเป็นภาษาไทยอัตโนมัติ..."))
 
         driver.get("https://www.facebook.com/settings/?tab=language_and_region")
 
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.XPATH, '//span[contains(text(), "Account language")]'))
-        )
-
-        # ส่ง log_func ต่อไปให้ฟังก์ชันลูก
+        # ส่งต่อให้ฟังก์ชันลูก (ที่ใช้ positional xpath) จัดการต่อ
         auto_change_language_to_thai(driver, log_func)
 
         driver.get(url)
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'body'))
-        )
+        WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'body')))
 
     except Exception as e:
         log_func(safe_utf8(f"[WARN] ตรวจสอบหรือเปลี่ยนภาษาไม่สำเร็จ: {e}"))
 
 def auto_change_language_to_thai(driver, log_func: callable):
     try:
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "Account language")]'))
-        ).click()
-        time.sleep(1)
 
+        js_script = """
+            const mainContent = document.querySelector('div[role="main"]');
+            const clickables = mainContent.querySelectorAll('a[role="link"], div[role="button"]');
+            clickables[0].click();
+            return { success: true };
+        """
+        driver.execute_script(js_script)
+        log_func(safe_utf8("✓ คลิกปุ่มแก้ไขภาษาสำเร็จ"))
+
+        search_input_xpath = '//div[@role="dialog"]//input[@type="text"]'
         input_lang = WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.XPATH, '//div[@role="dialog"]//input[contains(@placeholder, "Search")]'))
+            EC.visibility_of_element_located((By.XPATH, search_input_xpath))
         )
         input_lang.clear()
-        input_lang.send_keys("thai")
-        time.sleep(1)
+        input_lang.send_keys("ไทย")
 
         thai_radio = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, '//span[contains(text(), "ภาษาไทย")]/ancestor::div[contains(@role,"radio")]'))
         )
         driver.execute_script("arguments[0].click();", thai_radio)
 
-        save_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, '//div[@aria-label="Save & refresh"]'))
-        )
-        driver.execute_script("arguments[0].click();", save_button)
-        time.sleep(2)
-
         WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="dialog"]'))
+        )
+        time.sleep(0.5)
+
+        # 🚀 คลิกปุ่ม save จากลักษณะสีปุ่ม (น้ำเงินสด)
+        save_btn_text = driver.execute_script("""
+        const keywords = [
+        // 🔸 English
+        "save", "reload", "save changes",
+
+        // 🔸 Thai
+        "บันทึก", "โหลดใหม่",
+
+        // 🔸 Indonesian / Malay
+        "simpan", "muat ulang", "muat semula", "simpan perubahan",
+
+        // 🔸 Vietnamese
+        "lưu", "tải lại",
+
+        // 🔸 Filipino / Tagalog
+        "i-save", "i-reload",
+
+        // 🔸 Burmese (Myanmar)
+        "သိမ်းဆည်း", "ပြန်လည်ဖွင့်",
+
+        // 🔸 Chinese (Simplified & Traditional)
+        "保存", "重新加载", "儲存", "重新整理",
+
+        // 🔸 Japanese
+        "保存して", "再読み込み",
+
+        // 🔸 Korean
+        "저장", "새로고침",
+
+        // 🔸 Hindi
+        "सहेजें", "पुनः लोड करें",
+
+        // 🔸 Lao
+        "ບັນທຶກ", "ໂຫຼດໃໝ່",
+
+        // 🔸 Khmer (Cambodian)
+        "រក្សាទុក", "ផ្ទុកឡើងវិញ",
+
+        // 🔸 French
+        "enregistrer", "recharger", "sauvegarder",
+
+        // 🔸 German
+        "speichern", "neu laden",
+
+        // 🔸 Spanish
+        "guardar", "recargar",
+
+        // 🔸 Portuguese
+        "salvar", "recarregar",
+
+        // 🔸 Italian
+        "salva", "ricarica",
+
+        // 🔸 Turkish
+        "kaydet", "yeniden yükle",
+
+        // 🔸 Russian
+        "сохранить", "перезагрузить",
+
+        // 🔸 Bengali
+        "সংরক্ষণ", "পুনরায় লোড করুন",
+
+        // 🔸 Urdu
+        "محفوظ کریں", "دوبارہ لوڈ کریں"
+    ];
+
+    const allBtns = Array.from(document.querySelectorAll('div[role="button"][aria-label]'));
+    const match = allBtns.find(btn =>
+        keywords.some(k => btn.getAttribute("aria-label").toLowerCase().includes(k))
+    );
+
+    if (!match) throw "❌ ไม่พบปุ่มที่มี aria-label ที่ตรงกับคำในหลายภาษา";
+    match.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return match.innerText || "✅ คลิกด้วย aria-label สำเร็จ";
+        """)
+
+        log_func(safe_utf8(f"✓ คลิกปุ่ม Save สำเร็จด้วยข้อความ: {save_btn_text}"))
+
+        WebDriverWait(driver, 15).until(
             lambda d: d.find_element(By.TAG_NAME, 'html').get_attribute('lang') == 'th'
         )
-
-        log_func(safe_utf8("[OK] เปลี่ยนภาษาไทยสำเร็จ (กด Save ด้วย)"))
+        log_func(safe_utf8("[OK] เปลี่ยนภาษาไทยสำเร็จ (lang=th ยืนยันแล้ว)"))
         return True
 
     except Exception as e:
+        # 🔁 fallback: ถ้าเปลี่ยนภาษาได้แล้วโดยไม่ต้องคลิก
+        try:
+            lang_check = driver.find_element(By.TAG_NAME, 'html').get_attribute('lang')
+            if lang_check == 'th':
+                log_func(safe_utf8("[⚠️] ไม่เจอปุ่ม Save แต่ภาษาเป็นไทยแล้ว ถือว่าสำเร็จ"))
+                return True
+        except:
+            pass
+
         log_func(safe_utf8(f"[FAIL] เปลี่ยนภาษาไทยไม่สำเร็จ: {e}"))
         return False
 
@@ -308,16 +402,14 @@ def create_chrome_driver(print_to_gui=None, headless=True):
             options.add_argument("--headless=new")
 
         # Stealth & performance flags
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-software-rasterizer")  # << เพิ่มตรงนี้
-        options.add_argument("--log-level=3")  # << เพิ่มตรงนี้
-        options.add_argument("--disable-features=VoiceTranscriptionCapability,TranslateUI,AudioServiceOutOfProcess")
+        # --- เหลือไว้เฉพาะ Options ที่จำเป็นและปลอดภัย ---
+        options.add_argument("--log-level=3")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1024,600")  # ขนาดเดียวกับ IG
+        options.add_argument("--window-size=1024,600")
         options.add_argument(
             "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -454,44 +546,56 @@ def load_cookies_fb(driver, path, print_to_gui, callback, send_status_update=Tru
 
 
 def handle_generic_popups_fb(driver, print_to_gui, quick_check_timeout=1.0, skip_if_known_clean=False):
-    print_to_gui(safe_utf8("# DEBUG_FB: Attempting to handle generic pop-ups..."))
-
+    """
+    จัดการ Pop-up ทั่วไปของ Facebook (เช่น Cookie, Notification, 'Not Now')
+    โดยรวมการค้นหาหลายรูปแบบไว้ในครั้งเดียวเพื่อความเร็วและประสิทธิภาพ
+    """
     if skip_if_known_clean:
-        print_to_gui(safe_utf8("# DEBUG_FB: Skipped popup check (already handled or not expected here)."))
+        print_to_gui(safe_utf8("# DEBUG_FB: ข้ามการเช็ค pop-up เพราะจัดการไปแล้ว"))
         return False
 
-    try:
-        cookie_xpath = (
-            '//button[@role="button" and contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),' 
-            '"allow all cookies")] | '
-            '//a[@role="button" and contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),' 
-            '"allow all cookies")]'
-        )
-        WebDriverWait(driver, quick_check_timeout).until(
-            EC.element_to_be_clickable((By.XPATH, cookie_xpath))
-        ).click()
-        print_to_gui(safe_utf8("Facebook Cookie consent button clicked."))
-        time.sleep(1)
-        return True
-    except:
-        pass
-    for xpath in [
+    print_to_gui(safe_utf8("# DEBUG_FB: กำลังค้นหา pop-ups ทั่วไป..."))
+
+    # --- รวม XPath ทั้งหมดเรียงตามลำดับความสำคัญ ---
+    # 1. Cookie consent (สำคัญสุด)
+    # 2. Notification/Permission prompts
+    # 3. Generic close / "Not Now" buttons
+    popup_xpaths = [
+        # --- Cookie Consent ---
+        '//div[@aria-label="คุกกี้"]//div[@role="button"]//span[contains(text(), "อนุญาต")]',
+        '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "allow all cookies")]',
+        # --- Notification/Permission Popups ---
+        '//div[@role="dialog"]//div[@aria-label="บล็อก" or @aria-label="Block"]',
+        '//div[@role="dialog"]//div[@aria-label="ไม่อนุญาต" or @aria-label="Don\'t allow"]',
+        # --- General "Close" or "Not Now" ---
         '//div[@aria-label="ปิด" or @aria-label="Close"]',
         '//div[@role="button" and (contains(.,"ไม่ใช่ตอนนี้") or contains(.,"Not Now"))]'
-    ]:
-        try:
-            elems = driver.find_elements(By.XPATH, xpath)
-            for el in elems:
-                if el.is_displayed() and el.is_enabled():
-                    WebDriverWait(driver, quick_check_timeout).until(
-                        EC.element_to_be_clickable(el)
-                    ).click()
-                    print_to_gui(safe_utf8(f"Facebook generic close button clicked via: {xpath[:30]}..."))
-                    time.sleep(0.5)
-                    return True
-        except:
-            continue
-    print_to_gui(safe_utf8("# DEBUG_FB: No Facebook pop-ups found or handled."))
+    ]
+
+    # --- รวมทุก XPath ด้วย '|' เพื่อให้ find_elements ค้นหาเจอทั้งหมดในครั้งเดียว ---
+    combined_xpath = " | ".join(popup_xpaths)
+
+    try:
+        # ค้นหาทุก elements ที่อาจเป็น pop-up ที่เราสนใจ
+        potential_popups = driver.find_elements(By.XPATH, combined_xpath)
+
+        for popup in potential_popups:
+            # เช็คว่า element แสดงผลและสามารถคลิกได้จริง
+            if popup.is_displayed() and popup.is_enabled():
+                try:
+                    # ใช้ WebDriverWait เพื่อความแน่นอนก่อนคลิก
+                    WebDriverWait(driver, 0.2).until(EC.element_to_be_clickable(popup)).click()
+                    print_to_gui(safe_utf8(f"✓ คลิกปิด Pop-up สำเร็จ (Element: {popup.tag_name}, Text: '{popup.text[:20]}...')"))
+                    time.sleep(0.4) # รอเล็กน้อยหลังคลิก เพื่อให้ UI ตอบสนอง
+                    return True # เมื่อจัดการ pop-up ได้แล้ว ให้ออกจากฟังก์ชันทันที
+                except Exception as e:
+                    print_to_gui(safe_utf8(f"# DEBUG_FB: พยายามคลิก pop-up แต่ไม่สำเร็จ: {e}"))
+                    continue # หากคลิกไม่ได้ ให้ลอง element ตัวถัดไป
+
+    except Exception as e:
+        print_to_gui(safe_utf8(f"# DEBUG_FB: เกิดข้อผิดพลาดระหว่างค้นหา pop-ups: {e}"))
+
+    print_to_gui(safe_utf8("# DEBUG_FB: ไม่พบ Pop-up ที่ต้องจัดการ"))
     return False
 
 
@@ -499,18 +603,27 @@ def fb_login(driver, callback, print_to_gui):
     callback({"type": "wait_login"})
     print_to_gui(safe_utf8("# DEBUG_FB: Starting Facebook login process..."))
     driver.get("https://www.facebook.com/")
-    time.sleep(1)
     handle_generic_popups_fb(driver, print_to_gui, quick_check_timeout=0.6, skip_if_known_clean=False)
 
     # พยายามใช้ Cookies เพื่อ login อัตโนมัติ
     if os.path.exists(cookie_file) and load_cookies_fb(driver, cookie_file, print_to_gui, callback):
         driver.get("https://www.facebook.com/")
-        time.sleep(3)
         try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH,
-                    '//a[@aria-label="หน้าหลัก" or @aria-label="Home"]'))
+            # --- XPath ใหม่ที่ฉลาดขึ้น ไม่ขึ้นกับภาษา ---
+            # 1. หา "ช่องค้นหา" (Search bar)
+            # 2. หรือหา "ลิงก์โปรไฟล์" ของเราที่มุมขวาบน
+            # 3. หรือหาปุ่ม "Home" แบบเดิม (เผื่อไว้)
+            login_success_xpath = (
+                '//input[@type="search" or @aria-label="Search Facebook"] | '
+                '//a[contains(@href, "profile.php?id=")] | '
+                '//a[@aria-label="หน้าหลัก" or @aria-label="Home"]'
             )
+            
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, login_success_xpath))
+            )
+            # -------------------------------------------
+            
             print_to_gui(safe_utf8(f"{get_symbol('wait')} Logged into Facebook via cookies."))
             save_cookies_fb(driver, cookie_file, print_to_gui, callback)
 
@@ -520,10 +633,10 @@ def fb_login(driver, callback, print_to_gui):
 
     # Manual login flow
     driver.get("https://www.facebook.com/login/")
-    time.sleep(1)
+    time.sleep(0.2)
     handle_generic_popups_fb(driver, print_to_gui, quick_check_timeout=0.6)
     try:
-        WebDriverWait(driver, 15).until(
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "email"))
         )
     except TimeoutException:
@@ -536,21 +649,33 @@ def fb_login(driver, callback, print_to_gui):
     })
 
     start = time.time()
-    while time.time() - start < 3000:
+    # ปรับ timeout จาก 3000 เหลือ 300 วินาที (5 นาที) ซึ่งสมเหตุสมผลกว่า
+    while time.time() - start < 300:
         url = driver.current_url.lower()
-        if "facebook.com" in url and not any(x in url for x in ["login", "checkpoint"]):
+        if "facebook.com" in url and not any(x in url for x in ["login", "checkpoint", "recover"]):
             try:
-                WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH,
-                        '//a[@aria-label="หน้าหลัก" or @aria-label="Home"]'))
+                # --- START: ส่วนที่แก้ไข ---
+                # XPath ใหม่ที่ฉลาดขึ้น ไม่ขึ้นกับภาษา
+                # 1. หา "ช่องค้นหา" (Search bar)
+                # 2. หรือหา "ลิงก์โปรไฟล์" ของเราที่มุมขวาบน
+                login_success_xpath = (
+                    '//input[@type="search" or contains(@aria-label, "Search")] | '
+                    '//a[contains(@href, "profile.php?id=")]'
                 )
-                print_to_gui(safe_utf8("Facebook login confirmed."))
+                
+                WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, login_success_xpath))
+                )
+                # --- END: ส่วนที่แก้ไข ---
+
+                print_to_gui(safe_utf8("✓ ยืนยันการล็อกอิน Facebook สำเร็จ"))
                 save_cookies_fb(driver, cookie_file, print_to_gui, callback)
 
                 return True
             except:
+                # ถ้ายังหาไม่เจอในรอบนี้ ให้วนลูปเช็คต่อไป
                 pass
-        time.sleep(3)
+        time.sleep(1.5)
 
     callback({"type": "error", "title": safe_utf8("Error (Facebook)"), "message": safe_utf8("รอการล็อกอิน Facebook นานเกินไป")})
     return False
