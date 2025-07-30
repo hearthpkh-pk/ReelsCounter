@@ -43,7 +43,7 @@ from constants_fb import XPATH_VIEW_COUNT, XPATH_DATE_TEXT, XPATHS_PRIORITY_LIST
 # ⬇️⬇️ สวิตช์หลักอยู่ตรงนี้ ⬇️⬇️
 # True = โหมดพัฒนา (เห็นอีโมจิ)
 # False = โหมดสำหรับสร้าง .exe (เป็นตัวอักษร ปลอดภัย) #f"{get_symbol('wait')}
-IS_DEV_MODE = True 
+IS_DEV_MODE = False 
 
 def get_symbol(symbol_type: str) -> str:
     """แปลงชนิดของสัญลักษณ์เป็นอีโมจิ (ตอนพัฒนา) หรือข้อความ (ตอนใช้งานจริง)"""

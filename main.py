@@ -19,7 +19,7 @@ try:
 except (AttributeError, OSError):
     pass
 
-APP_VERSION = "1.4.2"
+APP_VERSION = "1.4.3"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
 
 window = None
@@ -93,6 +93,14 @@ class Api:
     
     def open_external_link(self, url):
         if not (url and url.startswith('http')):
+            return
+
+        print(f"API: เปิดลิงก์ด้วย UI แบบ Mini-Bar: {url}")
+
+        # --- 🔥 HOT FIX: ถ้าเป็น Instagram → เปิดเบราว์เซอร์หลักของระบบแทน ---
+        if "instagram.com" in url:
+            print("⚠️ เปิดด้วย Browser หลัก (Instagram Block WebView)")
+            webbrowser.open(url)
             return
 
         print(f"API: เปิดลิงก์ด้วย UI แบบ Mini-Bar: {url}")
@@ -171,12 +179,8 @@ class Api:
         def on_page_loaded():
             time.sleep(0.5)
             if popup_window:
-                try:
-                    if popup_window and not popup_window.closed:
-                        popup_window.evaluate_js(js_payload)
-                except Exception as e:
-                    print("Popup already closed or disposed:", e)
-
+                popup_window.evaluate_js(js_payload)
+                
         popup_window = webview.create_window('ReelsCounterPro', html=spinner_html, width=1050, height=650, resizable=True)
         popup_window.events.loaded += on_page_loaded
         
@@ -322,7 +326,7 @@ if __name__ == '__main__':
         min_size=(1250, 700)
     )
     api.window = window
-    webview.start(debug=True) #True #False
+    webview.start(debug=False) #True #False
     
     
 
