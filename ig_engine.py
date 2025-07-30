@@ -21,7 +21,7 @@ from selenium.common.exceptions import (
     StaleElementReferenceException
 )
 from constants_ig import FALLBACK_XPATHS_IG, XPATH_POST_DATE_IG
-
+from fb_engine import safe_utf8
 
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
