@@ -12,15 +12,14 @@ import ig_engine
 import fb_video_engine
 import ctypes
 import sys
-
-
+import time
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except (AttributeError, OSError):
     pass
 
-APP_VERSION = "1.4"
+APP_VERSION = "1.4.1"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
 
 window = None
@@ -29,6 +28,16 @@ def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
+
+def open_in_browser(url):
+    if getattr(sys, 'frozen', False):  # ถ้ารันจาก .exe
+        # เปิดแบบไม่ให้ console โผล่
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        subprocess.Popen(['cmd', '/c', 'start', '', url], startupinfo=startupinfo)
+    else:
+        webbrowser.open(url)
+
 
 class Api:
     def __init__(self):
@@ -81,10 +90,98 @@ class Api:
                 "message": f"Platform '{platform}' ไม่รู้จัก"
             })
 
+    
     def open_external_link(self, url):
-        if url and url.startswith('http'):
-            print(f"API: กำลังเปิดลิงก์ภายนอก: {url}".encode('utf-8', errors='replace').decode())
-            webbrowser.open_new_tab(url)
+        if not (url and url.startswith('http')):
+            return
+
+        print(f"API: เปิดลิงก์ด้วย UI แบบ Mini-Bar: {url}")
+
+        spinner_html = """
+        <html><head><style>
+            body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #ffffff; }
+            .spinner { border: 6px solid #f3f3f3; border-top: 6px solid #3498db; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style></head><body><div class="spinner"></div></body></html>
+        """
+        
+        # --- ✅ แก้ไข: JS Payload สำหรับสร้าง Mini-Bar ที่กดขยายได้ ---
+        js_payload = f"""
+        try {{
+            if (!document.getElementById('rcp-container')) {{
+                
+                // 1. สร้าง HTML: ประกอบด้วยตัว Container, ปุ่มไอคอน, และช่อง Input
+                const rcpContainer = document.createElement('div');
+                rcpContainer.id = 'rcp-container';
+                rcpContainer.innerHTML = `
+                    <div id="rcp-toggle-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5858 13.4142L7.75736 16.2426C5.63604 18.364 3.51472 18.364 1.3934 16.2426C-0.727922 14.1213 -0.727922 11.8787 1.3934 9.75736L4.22183 6.92893C6.34315 4.80761 8.46447 4.80761 10.5858 6.92893L11.2929 7.63604" stroke="#333" stroke-width="2" stroke-linecap="round"/><path d="M13.4142 10.5858L16.2426 7.75736C18.364 5.63604 20.4853 5.63604 22.6066 7.75736C24.7279 9.87868 24.7279 12.1213 22.6066 14.2426L19.7782 17.0711C17.6569 19.1924 15.5355 19.1924 13.4142 17.0711L12.7071 16.364" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>
+                    </div>
+                    <input id="rcp-url-input" type="text" value="{url}" readonly />
+                `;
+                document.body.appendChild(rcpContainer);
+
+                // 2. สร้าง CSS: กำหนดสไตล์ของปุ่มปกติและตอนที่ขยายแล้ว
+                const style = document.createElement('style');
+                style.textContent = `
+                    #rcp-container {{
+                        position: fixed; z-index: 99999999;
+                        /* State 1: ปุ่มกลมๆ (ค่าเริ่มต้น) */
+                        bottom: 20px; right: 20px; width: 55px; height: 55px;
+                        background: #f0f0f0; border-radius: 50%;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+                        cursor: pointer; transition: all 0.3s ease-in-out;
+                        display: flex; justify-content: center; align-items: center;
+                    }}
+                    #rcp-container.rcp-expanded {{
+                        /* State 2: แถบยาว (เมื่อถูกคลิก) */
+                        width: 100%; height: auto; bottom: 0; right: 0;
+                        border-radius: 0; padding: 15px 10px;
+                        border-top: 1px solid #c0c0c0;
+                        background: linear-gradient(to top, #e9e9e9, #f5f5f5);
+                    }}
+                    #rcp-url-input {{ display: none; }} /* ซ่อน input ไว้ก่อน */
+                    #rcp-container.rcp-expanded #rcp-url-input {{
+                        display: block; width: 95%; padding: 10px 15px; font-size: 14px;
+                        border-radius: 8px; border: 1px solid #bbb; background-color: #ffffff;
+                        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); text-align: center;
+                        outline: none; color: #000 !important;
+                    }}
+                    #rcp-toggle-btn {{ display: flex; align-items: center; justify-content: center; }}
+                    #rcp-container.rcp-expanded #rcp-toggle-btn {{ display: none; }} /* ซ่อนปุ่มไอคอนเมื่อขยาย */
+                `;
+                document.head.appendChild(style);
+
+                // 3. สร้าง Logic: เพิ่ม Event Listener ให้ปุ่ม
+                const urlInput = document.getElementById('rcp-url-input');
+                rcpContainer.addEventListener('click', (event) => {{
+                    if (event.target !== urlInput) {{
+                        const isExpanded = rcpContainer.classList.contains('rcp-expanded');
+                        rcpContainer.classList.toggle('rcp-expanded');
+                        if (!isExpanded) {{
+                            setTimeout(() => urlInput.select(), 50);
+                        }}
+                    }}
+                }});
+            }}
+        }} catch (e) {{ console.error('Failed to inject RCP Mini-Bar:', e); }}
+        """
+
+        # --- ส่วนที่เหลือของฟังก์ชันทำงานเหมือนเดิม ---
+        def on_page_loaded():
+            time.sleep(0.5)
+            if popup_window:
+                popup_window.evaluate_js(js_payload)
+
+        popup_window = webview.create_window('ReelsCounterPro', html=spinner_html, width=1050, height=650, resizable=True)
+        popup_window.events.loaded += on_page_loaded
+        
+        def navigate_to_target():
+            time.sleep(0.1)
+            if popup_window:
+                popup_window.load_url(url)
+
+        threading.Thread(target=navigate_to_target, daemon=True).start()
 
     def start_manual_date_fetch(self, platform, data):
         print(f"API: ได้รับคำสั่ง Manual Date Fetch สำหรับ '{platform}' Data: {data}".encode('utf-8', errors='replace').decode())

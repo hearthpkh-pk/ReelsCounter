@@ -4,7 +4,7 @@
 // =======================================================
 console.log('✅ script.js โหลดมาแล้ว');
 // --- ค่าคงที่ (ลูกพี่ต้องแก้ LOCAL_VERSION ทุกครั้งที่สร้างเวอร์ชันใหม่) ---
-const LOCAL_VERSION   = "1.4";
+const LOCAL_VERSION   = "1.4.1";
 const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-counter-update/main/app_version.json";
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
@@ -40,10 +40,30 @@ function animateCountUp(elementId, to, duration = 600) {
 
   requestAnimationFrame(update);
 }
+// // --- ฟังก์ชันสำทดสอบตาราง ---
+//   function insertTestLink() {
+//     const tbody = document.querySelector('#fb-table tbody');
+//     const testLinks = [
+//         "https://www.facebook.com/thaich8news/videos/772262488492296",
+//         "https://www.facebook.com/reel/749477930958603",
+//         "https://www.instagram.com/reel/DMUz9LZzWyF/"
+//     ];
 
+//     testLinks.forEach((reelUrl) => {
+//         const row = document.createElement('tr');
+//         row.setAttribute("data-link", reelUrl);
+//         row.innerHTML = `
+//             <td>#</td>
+//             <td>${reelUrl}</td>
+//             <td>–</td>
+//             <td>–</td>
+//         `;
 
+        
 
-
+//         tbody.prepend(row);
+//     });
+// }
 
 /**
  * ฟังก์ชันเปรียบเทียบเวอร์ชัน (เช่น '1.0' ใหม่กว่า '0.9')
@@ -64,8 +84,16 @@ function isNewerVersion(latest, local) {
  */
 function updateDownloadProgress(percent) {
     const statusEl = document.getElementById("updateStatus");
+    const progressBar = document.getElementById("progressBar");
+    const fill = document.getElementById("progressBarFill");
+
     if (statusEl) {
+        statusEl.style.display = "block";
         statusEl.innerText = `กำลังดาวน์โหลด… ${percent}%`;
+    }
+    if (progressBar && fill) {
+        progressBar.style.display = "block"; // <-- สำคัญ!
+        fill.style.width = `${percent}%`;
     }
 }
 
@@ -87,21 +115,16 @@ if (mode === "manual-ready") {
 }
 }
 
-
-
 // Driver Status Display ว่าเป็น "🟢 Manual Driver Active" หรือ "🟠 Auto Driver in use // 
-
 
 // =======================================================
 // ส่วนที่ 2: การจัดการหน้าต่าง Popup (Modal)
 // =======================================================
-
 /**
  * ฟังก์ชันแสดง/ซ่อนหน้าต่าง Popup
  */
 function showUpdateModal() { document.getElementById("updateModalBackdrop").style.display = "flex"; }
 function hideUpdateModal() { document.getElementById("updateModalBackdrop").style.display = "none"; }
-
 
 /**
  * ฟังก์ชันเติมข้อมูลลงในหน้าต่าง Popup และผูกปุ่มดาวน์โหลด
@@ -211,41 +234,13 @@ if (updateModal) {
   });
 }
 
-// ==== Update & Repair Widget ====
-window.addEventListener('DOMContentLoaded', () => {
-  const btn = document.getElementById('btn-auto-update');
-  const log = document.getElementById('update-log');
-  if (!btn || !log) return;
 
-  btn.addEventListener('click', async () => {
-    log.textContent = 'กำลังตรวจสอบ...';
-    try {
-      // เรียก Python API เช็กเวอร์ชัน
-      const info = await window.api.invoke('check_update'); 
-      // ตัวอย่าง return: { version: '1.0.6', isLatest: true, changelog: [...], downloadUrl: '...' }
-      
-      if (info.isLatest) {
-        log.textContent = `ล่าสุดแล้ว (${info.version})`;
-      } else {
-        log.innerHTML = `พบ v${info.version}<br>กดปุ่มเดิมเพื่อติดตั้ง`;
-        btn.textContent = '📥 ดาวน์โหลด & ติดตั้ง';
-        btn.onclick = async () => {
-          log.textContent = 'กำลังดาวน์โหลด...';
-          await window.api.invoke('run_updater', info.downloadUrl);
-          log.textContent = 'เรียบร้อย! กำลังรีสตาร์ท';
-        };
-      }
-    } catch (e) {
-      log.textContent = 'Error: ' + e.message;
-    }
-  });
-});
 // ================================
 
 // รอ DOM โหลดเสร็จ
 // โหลดเมื่อ DOM พร้อมใช้งาน
 document.addEventListener('DOMContentLoaded', () => {
-  // ─── ดึง element ต่างๆ ───────────────────────────────
+  // ─── ดึง element หลักๆ ทั้งหมดมาไว้ที่นี่ที่เดียว ───────────────────────────
   const updateBlock    = document.getElementById('update-block');
   const updateDropdown = document.getElementById('update-dropdown');
   const btnCheckGear   = document.getElementById('btn-check-update');
@@ -255,11 +250,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRepair      = document.getElementById('ud-repair');
   const btnAbout       = document.getElementById('ud-about');
 
+  // Elements สำหรับ About Modal
+  const aboutModal      = document.getElementById('aboutModalBackdrop');
+  const aboutModalClose = document.getElementById('aboutModalClose');
+  const aboutModalOk    = document.getElementById('aboutModalOk');
+  const aboutRepoLink   = document.getElementById('aboutRepoLink');
+  
+  // Elements สำหรับ Repair Modal
+  const repairModal              = document.getElementById('repairModalBackdrop');
+  const closeRepair              = document.getElementById('repairModalClose');
+  const cancelRepair             = document.getElementById('repairCancelBtn');
+  const confirmRepair            = document.getElementById('repairConfirmBtn');
+  const repairBodyText           = document.getElementById('repairBodyText');
+  const repairProgressContainer  = document.getElementById('repairProgressContainer');
+  const repairProgressBar        = document.getElementById('repairProgressBar');
+  
+  // แสดงเวอร์ชัน
+  const spanVersion = document.getElementById('app-version');
+  if (spanVersion) spanVersion.textContent = LOCAL_VERSION;
 
-  // ─── ถ้า critical element หาย ให้หยุด ─────────────────
+  // ─── ถ้า element สำคัญหายไป ให้หยุดทำงาน ───────────────────
   if (!updateBlock || !updateDropdown) return;
 
-  // ─── 1) เปิด/ปิด dropdown ─────────────────────────────
+  // ─── 1) Logic เปิด/ปิด Dropdown (ที่หายไป) ─────────────────────────
   updateBlock.addEventListener('click', e => {
     e.stopPropagation();
     updateDropdown.classList.toggle('hidden');
@@ -269,6 +282,141 @@ document.addEventListener('DOMContentLoaded', () => {
       updateDropdown.classList.add('hidden');
     }
   });
+
+  // ─── 2) Logic ของปุ่มต่างๆ ใน Dropdown ────────────────────────
+  // --- วิธีใช้ ---
+  btnHelp.addEventListener('click', e => {
+    e.stopPropagation();
+    updateDropdown.classList.add('hidden');
+    const helpUrl = 'https://github.com/Babydunx1/reels-counter-update/blob/main/docs/usage.md';
+    if (window.pywebview?.api?.open_external_link) {
+      window.pywebview.api.open_external_link(helpUrl);
+    } else {
+      window.open(helpUrl, '_blank');
+    }
+  });
+
+  // --- รายละเอียดโปรแกรม ---
+  btnDocs.addEventListener('click', () => {
+    updateDropdown.classList.add('hidden');
+    const docsUrl = 'https://github.com/Babydunx1/reels-counter-update/blob/main/docs/manual.md';
+    if (window.pywebview?.api?.showDocs) {
+      window.pywebview.api.showDocs();
+    } else {
+      window.open(docsUrl, '_blank');
+    }
+  });
+
+  // --- ตรวจสอบอัปเดต (เรียกใช้ handler ของปุ่มเฟืองเดิม) ---
+  btnCheck.addEventListener('click', () => {
+    updateDropdown.classList.add('hidden');
+    btnCheckGear.click();
+  });
+
+  // --- เกี่ยวกับ (About Modal) ---
+  if (btnAbout && aboutModal && aboutModalClose && aboutModalOk) {
+    btnAbout.addEventListener('click', e => {
+      e.stopPropagation();
+      updateDropdown.classList.add('hidden');
+      aboutModal.classList.remove('hidden');
+    });
+    aboutModalClose.addEventListener('click', () => aboutModal.classList.add('hidden'));
+    aboutModalOk.addEventListener('click', () => aboutModal.classList.add('hidden'));
+    aboutModal.addEventListener('click', e => {
+      if (e.target === aboutModal) aboutModal.classList.add('hidden');
+    });
+  }
+
+  // --- ลิงก์ GitHub ใน About Modal ---
+  if (aboutRepoLink) {
+    aboutRepoLink.addEventListener('click', e => {
+      e.preventDefault();
+      const repoUrl = 'https://github.com/Babydunx1/reels-counter-update';
+      if (window.api?.invoke) {
+        window.api.invoke('open_external_link', repoUrl);
+      } else {
+        window.open(repoUrl, '_blank');
+      }
+    });
+  }
+
+  // ─── 3) Logic ของ Repair Modal ทั้งหมด (ที่แก้ไขแล้ว) ───────────────
+  if (repairModal && btnRepair && closeRepair && cancelRepair && confirmRepair) {
+    // เปิด Modal
+    btnRepair.addEventListener('click', e => {
+      e.stopPropagation();
+      updateDropdown.classList.add('hidden');
+      repairModal.classList.remove('hidden');
+    });
+
+    // ปิด Modal (ปุ่ม X และ ยกเลิก)
+    closeRepair.addEventListener('click', () => repairModal.classList.add('hidden'));
+    cancelRepair.addEventListener('click', () => repairModal.classList.add('hidden'));
+
+    // ปิด Modal (คลิกนอกกรอบ)
+    repairModal.addEventListener('click', e => {
+      if (e.target === repairModal) repairModal.classList.add('hidden');
+    });
+
+    // **ยืนยันการซ่อมแซม**
+    confirmRepair.addEventListener('click', async e => {
+      e.stopPropagation();
+
+      // เคลียร์ UI
+      repairBodyText.textContent = '⏳ กำลังดาวน์โหลดและซ่อมแซม… กรุณารอสักครู่';
+      repairProgressContainer.classList.remove('hidden');
+      repairProgressBar.style.width = '0%';
+      repairProgressBar.textContent = '0%';
+      const modalFooter = repairModal.querySelector('.modal-footer');
+      if (modalFooter) modalFooter.innerHTML = '';
+
+      let percent = 0;
+
+      // 🌀 1. Fake Progress → วิ่งถึง 90%
+      const interval = setInterval(() => {
+        if (percent < 90) {
+          percent += 2;
+          repairProgressBar.style.width = `${percent}%`;
+          repairProgressBar.textContent = `${percent}%`;
+        } else {
+          clearInterval(interval);
+          callRealRepair();
+        }
+      }, 100);
+
+      // 🛠 2. เรียก API จริง
+      async function callRealRepair() {
+        try {
+          await window.pywebview.api.run_repair(); // ไม่ต้องสน progress callback
+          setTimeout(() => {
+            repairProgressBar.style.width = '100%';
+            repairProgressBar.textContent = '100%';
+            repairBodyText.textContent = '🔧 การซ่อมแซมเสร็จสมบูรณ์!';
+
+            // ✅ เพิ่มปุ่ม "ตกลง" และแสดงได้
+            if (modalFooter) {
+              modalFooter.innerHTML = '';
+              const okBtn = document.createElement('button');
+              okBtn.textContent = 'ตกลง';
+              okBtn.className = 'btn-confirm';
+              okBtn.onclick = () => repairModal.classList.add('hidden');
+              modalFooter.appendChild(okBtn);
+            }
+          }, 1000); // เพิ่มดีเลย์ให้ดูธรรมชาติ
+        } catch (err) {
+          repairBodyText.textContent = '❌ ซ่อมแซมล้มเหลว: ' + err;
+          if (modalFooter) {
+            const btn = document.createElement('button');
+            btn.textContent = 'ตกลง';
+            btn.className = 'btn-confirm';
+            btn.onclick = () => repairModal.classList.add('hidden');
+            modalFooter.appendChild(btn);
+          }
+        }
+      }
+    });
+  }
+});
 
   // ─── เพิ่มการเรียงยอดวิว ───────────────────────────────
   ['fb','ig'].forEach(platform => {
@@ -327,175 +475,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
     // ─────────────────────────────────────────────────────────
-
-  // ────────────────────────────────────────────────────────
-
-  // ─── 2) เมนูย่อย ───────────────────────────────────────
-
-  // ——— About Modal ——————————————————————————————
-const aboutModal      = document.getElementById('aboutModalBackdrop');
-const aboutModalClose = document.getElementById('aboutModalClose');
-const aboutModalOk    = document.getElementById('aboutModalOk');
-
-
-// แสดงเวอร์ชัน
-const spanVersion = document.getElementById('app-version');
-if (spanVersion) spanVersion.textContent = LOCAL_VERSION;
-
-
-
-btnAbout.addEventListener('click', e => {
-  e.stopPropagation();
-  updateDropdown.classList.add('hidden');
-  aboutModal.classList.remove('hidden');
-});
-aboutModalClose.addEventListener('click', () => aboutModal.classList.add('hidden'));
-aboutModalOk   .addEventListener('click', () => aboutModal.classList.add('hidden'));
-aboutModal     .addEventListener('click', e => {
-  if (e.target === aboutModal) aboutModal.classList.add('hidden');
-});
-
-
-// ลิงก์ไปหน้า GitHub
-aboutRepoLink.addEventListener('click', e => {
-  e.preventDefault();
-  const repoUrl = 'https://github.com/Babydunx1/reels-counter-update';
-  if (window.api?.invoke) {
-    window.api.invoke('open_external_link', repoUrl);
-  } else {
-    window.open(repoUrl, '_blank');
-  }
-});
-
- // ——— About Modal ——————————————————————————————
-
-
-
-// ——— เริ่มปุ่ม “วิธีใช้” → เปิด usage.md บน GitHub ———
-const helpUrl = 'https://github.com/Babydunx1/reels-counter-update/blob/main/docs/usage.md';
-
-btnHelp.addEventListener('click', e => {
-  e.stopPropagation();
-  updateDropdown.classList.add('hidden');
-
-  // ถ้าเป็น WebView ให้เรียก Python API open_external_link(url)
-  if (window.pywebview && window.pywebview.api && 
-      typeof window.pywebview.api.open_external_link === 'function') {
-    window.pywebview.api.open_external_link(helpUrl);
-  }
-  // ถ้าไม่ใช่ WebView (รันในเบราเซอร์) ก็เปิดแท็บใหม่
-  else {
-    window.open(helpUrl, '_blank');
-  }
-});
- // ——— จบ ปุ่ม “วิธีใช้” → เปิด usage.md บน GitHub ———
-
- // ——— ปุ่ม เรียก handler ปุ่มเฟืองเดิม ———
-  btnCheck.addEventListener('click', () => {
-    updateDropdown.classList.add('hidden');
-    btnCheckGear.click(); // เรียก handler ปุ่มเฟืองเดิม
-  });
-   // ——— ปุ่ม เรียก handler ปุ่มเฟืองเดิม ———
-
-
-
-
-  
-
-
-  // ปุ่มลิ้งรายละเอียดโปรแกรม ลิ้งไป github
-btnDocs.addEventListener('click', () => {
-  updateDropdown.classList.add('hidden');
-  if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.showDocs === 'function') {
-    window.pywebview.api.showDocs();
-  } else {
-    // fallback เปิดด้วย window.open เผื่อ run นอก webview
-    window.open('https://github.com/Babydunx1/reels-counter-update/blob/main/docs/manual.md', '_blank');
-  }
-});
-  // ปุ่มลิ้งรายละเอียดโปรแกรม ลิ้งไป github
-
-  // ──────────────────────────────────────────
-  
-  // ─── 3) จับเหตุการณ์ Repair Modal ─────────────────────
-  const repairModal              = document.getElementById('repairModalBackdrop');
-  const closeRepair              = document.getElementById('repairModalClose');
-  const cancelRepair             = document.getElementById('repairCancelBtn');
-  const confirmRepair            = document.getElementById('repairConfirmBtn');
-  const repairBodyText           = document.getElementById('repairBodyText');
-  const repairProgressContainer  = document.getElementById('repairProgressContainer');
-  const repairProgressBar        = document.getElementById('repairProgressBar');
-
-// **1. ถ้ามี backdrop ให้จับคลิกนอกตัว card ปิด modal**
-if (repairModal) {
-  repairModal.addEventListener('click', e => {
-    if (e.target === repairModal) {
-      repairModal.classList.add('hidden');
-    }
-  });
-}
-
-// **2. ถ้าไม่มี or ปุ่ม Confirm หาย ให้ข้ามบล็อกนี้**
-if (!repairModal || !confirmRepair) return;
-
-// 3. เปิด modal (btnRepair ของเดิม)
-btnRepair.addEventListener('click', e => {
-  e.stopPropagation();
-  updateDropdown.classList.add('hidden');
-  repairModal.classList.remove('hidden');
-});
-
-// 4. ปิด modal (X / ยกเลิก)
-closeRepair .addEventListener('click', () => repairModal.classList.add('hidden'));
-cancelRepair.addEventListener('click', () => repairModal.classList.add('hidden'));
-
-  // อัพเดต: ตกลง → แสดง progress + เรียก API + สรุปผล
-  confirmRepair.addEventListener('click', async e => {
-    e.stopPropagation();
-    updateDropdown.classList.add('hidden');
-
-    // 1) เตรียม Progress Bar
-    repairProgressContainer.classList.remove('hidden');
-    repairProgressBar.style.width   = '0%';
-    repairProgressBar.textContent   = '0%';
-
-    // เปลี่ยนข้อความ body + ลบปุ่มเดิม
-    repairBodyText.textContent = '⏳ กำลังดาวน์โหลดและซ่อมแซม… กรุณารอสักครู่';
-    repairModal.querySelector('.modal-footer').innerHTML = '';
-
-    try {
-      // สมมติ run_repair รับ callback และเรียกกลับด้วยเปอร์เซนต์
-      await window.pywebview.api.run_repair(progress => {
-        repairProgressBar.style.width = `${progress}%`;
-        repairProgressBar.textContent = `${progress}%`;
-      });
-
-      repairBodyText.textContent = '🔧 ซ่อมแซมเรียก API เรียบร้อยแล้ว';
-    } catch (err) {
-      repairBodyText.textContent = '❌ ซ่อมแซมล้มเหลว: ' + err;
-    } finally {
-      // ซ่อน Progress Bar
-      repairProgressContainer.classList.add('hidden');
-
-      // สร้างปุ่ม OK ปิด modal
-      const footer = repairModal.querySelector('.modal-footer');
-      const okBtn = document.createElement('button');
-      okBtn.textContent = 'ตกลง';
-      okBtn.className   = 'btn-confirm';
-      okBtn.addEventListener('click', () => repairModal.classList.add('hidden'));
-      footer.appendChild(okBtn);
-      
-      
-    }
-  });
-});
-
-
-
-
-// ———————————————
-
-
 // จบส่วนระบบ Update ================================
 
 
@@ -661,9 +640,6 @@ function handle_python_callback(response) {
                 recalculateTotalViews(active_platform);
             } break;
 
-
-
-
             case 'driver_status':
                 // ○ เมื่อโหมดกลายเป็น manual-ready → ยกเลิกล็อกปุ่ม
                 if (response.mode === 'manual-ready') {
@@ -705,11 +681,6 @@ function handle_python_callback(response) {
             }
             break;
 
-            
-
-                
-           
-
             // ==== สถานะทั่วไปจาก backend (เช่น บอกสำเร็จ/จบงาน/ข้อความพิเศษ) ====
             case 'status':
                 set_status(response.message, active_platform, response.final, response.special);
@@ -745,8 +716,6 @@ function handle_python_callback(response) {
                   startDateFetch(active_platform);
                 }
                 break;
-
-
 
             // ==== ขณะอัปเดตวันที่ทีละแถว (ในตาราง) ====
             case 'update_date_status':
@@ -1083,10 +1052,6 @@ function startScan(platform) {
       }
     }
 
-
-
-
-
 // --- Function for Manual Date Fetch ---
 
 function manualFetchDate(platform) {
@@ -1176,12 +1141,9 @@ function manualFetchDate(platform) {
   }
 }
 
-
-
 // --- Event Listeners (เหมือนเดิม) ---
 document.addEventListener('DOMContentLoaded', () => {
     console.log("[DEBUG] DOMContentLoaded");
-    
 
     // ... โค้ดส่วนยืดหดคอลัมน์ และ คลิก/ดับเบิลคลิก เหมือนเดิมทั้งหมด ...
     const resizers = document.querySelectorAll('.resizer');
@@ -1206,8 +1168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-
-   // --- Logic การคลิก และ ดับเบิลคลิกบนตาราง (รวมไว้ในที่เดียว) ---
+    // --- Logic การคลิก และ ดับเบิลคลิกบนตาราง (เวอร์ชันแก้ไขล่าสุด) ---
     ['fb-table', 'ig-table'].forEach(tableId => {
         const table = document.getElementById(tableId);
         if (!table) return;
@@ -1215,26 +1176,62 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = table.querySelector('tbody');
         if (!tbody) return;
 
-        // **คนดักฟังที่ 1: การคลิกเพื่อเลือกแถว (Click)**
-       
-
-        // **คนดักฟังที่ 2: การดับเบิลคลิกเพื่อเปิดลิงก์ (Double Click)**
+        // **จัดการแค่การดับเบิลคลิกเท่านั้น**
         tbody.addEventListener('dblclick', (event) => {
             const tr = event.target.closest('tr');
-            if (!tr || tr.classList.contains('summary-row') || tr.cells.length < 2) return;
+            if (!tr || tr.classList.contains('summary-row')) return;
             
-            // ใช้ data-link เพื่อความแม่นยำ
             const url = tr.getAttribute('data-link');
 
             if (url && url.startsWith('http') && window.pywebview) {
+                console.log(`[JS] Double-clicked. Calling open_external_link with: ${url}`);
                 window.pywebview.api.open_external_link(url);
             }
         });
+
+        // **ส่วนของการคลิกเดียว (Click) สำหรับเลือกแถวเท่านั้น**
+        tbody.addEventListener('click', (event) => {
+            const tr = event.target.closest('tr');
+            if (!tr || tr.classList.contains('summary-row')) return;
+            
+            document.querySelectorAll(`#${tableId} tr.selected`).forEach(row => {
+                row.classList.remove('selected');
+            });
+            tr.classList.add('selected');
+        });
     });
 
-    showTab('fb');
-    console.log("[DEBUG] DOMContentLoaded DONE");
-});
+
+//    // --- Logic การคลิก และ ดับเบิลคลิกบนตาราง (รวมไว้ในที่เดียว) ---
+//     ['fb-table', 'ig-table'].forEach(tableId => {
+//         const table = document.getElementById(tableId);
+//         if (!table) return;
+
+//         const tbody = table.querySelector('tbody');
+//         if (!tbody) return;
+
+//         // **คนดักฟังที่ 1: การคลิกเพื่อเลือกแถว (Click)**
+       
+
+//         // **คนดักฟังที่ 2: การดับเบิลคลิกเพื่อเปิดลิงก์ (Double Click)**
+//         tbody.addEventListener('dblclick', (event) => {
+//             const tr = event.target.closest('tr');
+//             if (!tr || tr.classList.contains('summary-row') || tr.cells.length < 2) return;
+            
+//             // ใช้ data-link เพื่อความแม่นยำ
+//             const url = tr.getAttribute('data-link');
+
+//             if (url && url.startsWith('http') && window.pywebview) {
+//                 window.pywebview.api.open_external_link(url);
+//             }
+//         });
+//     });
+
+    // --- Logic การสลับแท็บ (View Switching) ---
+
+     showTab('fb');
+     console.log("[DEBUG] DOMContentLoaded DONE");
+ });
 
 // ==================================
 // View Tab Switching Logic
@@ -1428,13 +1425,9 @@ function enableCardCopy(cardSelector, valueId) {
   }
 }
 
-
 // เรียกใช้งาน
 enableCardCopy('#content-ig .card', 'ig-total-views');
 enableCardCopy('#content-fb .card', 'fb-total-views');
-
-
-
 
 // --- Recalculate total views after row deletion ---
 // --- Recalculate total views after row deletion ---
