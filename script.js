@@ -4,7 +4,7 @@
 // =======================================================
 console.log('✅ script.js โหลดมาแล้ว');
 // --- ค่าคงที่ (ลูกพี่ต้องแก้ LOCAL_VERSION ทุกครั้งที่สร้างเวอร์ชันใหม่) ---
-const LOCAL_VERSION   = "1.4.1";
+const LOCAL_VERSION   = "1.4.2";
 const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-counter-update/main/app_version.json";
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
@@ -158,26 +158,7 @@ function fillUpdateModal(isLatest) {
   };
 }
 
-// ——— ปุ่ม “ดูประวัติอัปเดต” → เปิด GitHub Releases ———
-document.body.addEventListener('click', e => {
-  // ถ้า target คือปุ่มดูประวัติอัปเดต
-  if (e.target && e.target.id === 'ud-changelog') {
-    e.preventDefault();
-    e.stopPropagation();
 
-    // ซ่อน modal ถ้ามันยังเปิดอยู่
-    const modal = document.getElementById('updateModalBackdrop');
-    if (modal) modal.style.display = 'none';
-
-    // เปิด Releases บน GitHub
-    const url = 'https://github.com/Babydunx1/reels-counter-update/releases';
-    if (window.api && typeof window.api.invoke === 'function') {
-      window.api.invoke('open_external_link', url);
-    } else {
-      window.open(url, '_blank');
-    }
-  }
-});
 
 // =======================================================
 // ส่วนที่ 3: การทำงานเมื่อโปรแกรมเปิด (หัวใจหลัก)
@@ -283,6 +264,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // --- ปุ่ม “ดูประวัติอัปเดต” → เปิด GitHub Releases ---
+// ส่วนนี้สามารถวางไว้นอก DOMContentLoaded ได้เลย
+  document.body.addEventListener('click', e => {
+      
+      // --- ปุ่ม: "ดูประวัติอัปเดต" ในเมนูเฟือง ---
+      if (e.target && e.target.id === 'ud-changelog') {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const modal = document.getElementById('updateModalBackdrop');
+          if (modal) modal.style.display = 'none';
+
+          const url = 'https://github.com/Babydunx1/reels-counter-update/releases';
+          
+          if (window.pywebview?.api?.open_external_link) {
+              window.pywebview.api.open_external_link(url);
+          } else {
+              window.open(url, '_blank');
+          }
+      }
+
+      // --- ปุ่ม: "รายละเอียดการอัปเดต" ในหน้าต่าง Popup ---
+      const detailsLink = e.target.closest('#update-modal-details-link');
+      if (detailsLink) {
+          e.preventDefault();
+          
+          const url = 'https://github.com/Babydunx1/reels-counter-update/releases';
+          
+          if (window.pywebview?.api?.open_external_link) {
+              window.pywebview.api.open_external_link(url);
+          } else {
+              window.open(url, '_blank');
+          }
+      }
+
+      // --- ปิด Dropdown เมื่อคลิกนอกพื้นที่ ---
+      const updateBlock = document.getElementById('update-block');
+      if (updateBlock && !updateBlock.contains(e.target)) {
+          const updateDropdown = document.getElementById('update-dropdown');
+          if(updateDropdown) updateDropdown.classList.add('hidden');
+      }
+  });
+
   // ─── 2) Logic ของปุ่มต่างๆ ใน Dropdown ────────────────────────
   // --- วิธีใช้ ---
   btnHelp.addEventListener('click', e => {
@@ -298,13 +322,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- รายละเอียดโปรแกรม ---
   btnDocs.addEventListener('click', () => {
-    updateDropdown.classList.add('hidden');
-    const docsUrl = 'https://github.com/Babydunx1/reels-counter-update/blob/main/docs/manual.md';
-    if (window.pywebview?.api?.showDocs) {
-      window.pywebview.api.showDocs();
-    } else {
-      window.open(docsUrl, '_blank');
-    }
+      updateDropdown.classList.add('hidden');
+      
+      // --- ✅ START: แก้ไข Logic การเปิดลิงก์ ---
+      const docsUrl = 'https://github.com/Babydunx1/reels-counter-update/blob/main/docs/manual.md';
+
+      if (window.pywebview?.api?.open_external_link) {
+          // ใช้ API กลางตัวเดียวกัน
+          window.pywebview.api.open_external_link(docsUrl);
+      } else {
+          // Fallback
+          window.open(docsUrl, '_blank');
+      }
+      // --- ✅ END: แก้ไข Logic การเปิดลิงก์ ---
   });
 
   // --- ตรวจสอบอัปเดต (เรียกใช้ handler ของปุ่มเฟืองเดิม) ---
@@ -328,16 +358,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- ลิงก์ GitHub ใน About Modal ---
+  // --- ลิงก์ GitHub ใน About Modal ---
   if (aboutRepoLink) {
-    aboutRepoLink.addEventListener('click', e => {
-      e.preventDefault();
-      const repoUrl = 'https://github.com/Babydunx1/reels-counter-update';
-      if (window.api?.invoke) {
-        window.api.invoke('open_external_link', repoUrl);
-      } else {
-        window.open(repoUrl, '_blank');
-      }
-    });
+      aboutRepoLink.addEventListener('click', e => {
+          e.preventDefault();
+          
+          // --- ✅ START: แก้ไข Logic การเปิดลิงก์ ---
+          const repoUrl = 'https://github.com/Babydunx1/reels-counter-update';
+
+          if (window.pywebview?.api?.open_external_link) {
+              window.pywebview.api.open_external_link(repoUrl);
+          } else {
+              window.open(repoUrl, '_blank');
+          }
+          // --- ✅ END: แก้ไข Logic การเปิดลิงก์ ---
+      });
   }
 
   // ─── 3) Logic ของ Repair Modal ทั้งหมด (ที่แก้ไขแล้ว) ───────────────

@@ -19,7 +19,7 @@ try:
 except (AttributeError, OSError):
     pass
 
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.2"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
 
 window = None
@@ -171,7 +171,11 @@ class Api:
         def on_page_loaded():
             time.sleep(0.5)
             if popup_window:
-                popup_window.evaluate_js(js_payload)
+                try:
+                    if popup_window and not popup_window.closed:
+                        popup_window.evaluate_js(js_payload)
+                except Exception as e:
+                    print("Popup already closed or disposed:", e)
 
         popup_window = webview.create_window('ReelsCounterPro', html=spinner_html, width=1050, height=650, resizable=True)
         popup_window.events.loaded += on_page_loaded
@@ -215,9 +219,16 @@ class Api:
             })
 
     def showDocs(self):
+        """
+        API สำหรับเปิดหน้าเอกสารของโปรแกรม
+        """
         url = "https://github.com/Babydunx1/reels-counter-update/blob/main/docs/manual.md"
-        print(f"API: กำลังเปิดเอกสารโปรแกรมที่ {url}".encode('utf-8', errors='replace').decode())
-        webbrowser.open_new_tab(url)
+        print(f"API: กำลังเปิดเอกสารโปรแกรม (เรียกใช้ open_external_link) ที่ {url}")
+        
+        # --- จุดที่แก้ไข ---
+        # เรียกใช้ฟังก์ชัน open_external_link ที่เราแก้ไขสมบูรณ์แล้ว
+        # เพื่อให้การเปิดลิงก์ทั้งหมดทำงานเหมือนกันผ่าน Mini-Bar UI
+        self.open_external_link(url)
 
     def log_from_js(self, msg):
         print(f"[JS LOG] {msg}".encode('utf-8', errors='replace').decode())
