@@ -4,7 +4,7 @@
 // =======================================================
 console.log('✅ script.js โหลดมาแล้ว');
 // --- ค่าคงที่ (ลูกพี่ต้องแก้ LOCAL_VERSION ทุกครั้งที่สร้างเวอร์ชันใหม่) ---
-const LOCAL_VERSION   = "1.4.2";
+const LOCAL_VERSION   = "1.4.4";
 const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-counter-update/main/app_version.json";
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
@@ -38,32 +38,46 @@ function animateCountUp(elementId, to, duration = 600) {
     }
   }
 
+// สำคัญ
+window.pywebview = window.pywebview || {};
+window.pywebview.api = window.pywebview.api || {};
+if (typeof window.pywebview.api.onLog !== 'function') {
+  window.pywebview.api.onLog = function(/*msg*/) {
+    // no-op หรือ console.debug(msg);
+  };
+}
+
+window.pywebview.api.onLog((message) => {
+  appendToLogPanel(message);
+});
+// สำคัญ
+
   requestAnimationFrame(update);
 }
-// // --- ฟังก์ชันสำทดสอบตาราง ---
-//   function insertTestLink() {
-//     const tbody = document.querySelector('#fb-table tbody');
-//     const testLinks = [
-//         "https://www.facebook.com/thaich8news/videos/772262488492296",
-//         "https://www.facebook.com/reel/749477930958603",
-//         "https://www.instagram.com/reel/DMUz9LZzWyF/"
-//     ];
+// --- ฟังก์ชันสำทดสอบตาราง ---
+  function insertTestLink() {
+    const tbody = document.querySelector('#fb-table tbody');
+    const testLinks = [
+        "https://www.facebook.com/thaich8news/videos/772262488492296",
+        "https://www.facebook.com/reel/749477930958603",
+        "https://www.instagram.com/reel/DMUz9LZzWyF/"
+    ];
 
-//     testLinks.forEach((reelUrl) => {
-//         const row = document.createElement('tr');
-//         row.setAttribute("data-link", reelUrl);
-//         row.innerHTML = `
-//             <td>#</td>
-//             <td>${reelUrl}</td>
-//             <td>–</td>
-//             <td>–</td>
-//         `;
+    testLinks.forEach((reelUrl) => {
+        const row = document.createElement('tr');
+        row.setAttribute("data-link", reelUrl);
+        row.innerHTML = `
+            <td>#</td>
+            <td>${reelUrl}</td>
+            <td>–</td>
+            <td>–</td>
+        `;
 
         
 
-//         tbody.prepend(row);
-//     });
-// }
+        tbody.prepend(row);
+    });
+}
 
 /**
  * ฟังก์ชันเปรียบเทียบเวอร์ชัน (เช่น '1.0' ใหม่กว่า '0.9')
@@ -281,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (window.pywebview?.api?.open_external_link) {
               window.pywebview.api.open_external_link(url);
           } else {
-              window.open(url, '_blank');
+              
           }
       }
 
@@ -295,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (window.pywebview?.api?.open_external_link) {
               window.pywebview.api.open_external_link(url);
           } else {
-              window.open(url, '_blank');
+              
           }
       }
 
@@ -316,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.pywebview?.api?.open_external_link) {
       window.pywebview.api.open_external_link(helpUrl);
     } else {
-      window.open(helpUrl, '_blank');
+      
     }
   });
 
@@ -332,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
           window.pywebview.api.open_external_link(docsUrl);
       } else {
           // Fallback
-          window.open(docsUrl, '_blank');
+          
       }
       // --- ✅ END: แก้ไข Logic การเปิดลิงก์ ---
   });
@@ -369,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (window.pywebview?.api?.open_external_link) {
               window.pywebview.api.open_external_link(repoUrl);
           } else {
-              window.open(repoUrl, '_blank');
+              
           }
           // --- ✅ END: แก้ไข Logic การเปิดลิงก์ ---
       });
@@ -717,7 +731,7 @@ function handle_python_callback(response) {
             break;
 
             // ==== สถานะทั่วไปจาก backend (เช่น บอกสำเร็จ/จบงาน/ข้อความพิเศษ) ====
-            case 'status':
+            case 'status':           
                 set_status(response.message, active_platform, response.final, response.special);
                 if (response.final) {
                     const progressContainer = document.getElementById(`${active_platform}-progress-container`);
@@ -824,7 +838,7 @@ function handle_python_callback(response) {
     }
 }
 
-function set_status(message, platform, is_final = false) {
+function set_status(message, platform, is_final = false, is_special = false) {
     console.log("[DEBUG] set_status", {message, platform, is_final});
     const statusLabel = document.getElementById(`${platform}-status-label`);
     if (!statusLabel) {
@@ -832,6 +846,16 @@ function set_status(message, platform, is_final = false) {
         return;
     }
     statusLabel.innerText = message;
+    // --- ✅ เพิ่ม Logic การตรวจสอบ is_special ---
+    if (is_special) {
+        statusLabel.classList.add('special-status-pulse');
+        statusLabel.style.color = '#e53935'; // สีแดง
+    } else {
+        statusLabel.classList.remove('special-status-pulse');
+        // คืนสีปกติ (เขียวเมื่อจบ, สีตาม platform เมื่อทำงาน)
+        statusLabel.style.color = is_final ? '#28a745' : '';
+    }
+    // --- จบส่วนที่เพิ่ม ---
 
     // --- ✅ START: ส่วนที่ผสานเข้ามา ---
     // ตรวจสอบเนื้อหาของข้อความที่ได้รับมา

@@ -39,10 +39,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 # ⚙️ Constants (config สำหรับ Facebook)
 from constants_fb import XPATH_VIEW_COUNT, XPATH_DATE_TEXT, XPATHS_PRIORITY_LIST
+from browser_engine import start_browser
+
+
 
 # ⬇️⬇️ สวิตช์หลักอยู่ตรงนี้ ⬇️⬇️
 # True = โหมดพัฒนา (เห็นอีโมจิ)
-# False = โหมดสำหรับสร้าง .exe (เป็นตัวอักษร ปลอดภัย) #f"{get_symbol('wait')}
+# False = โหมดสำหรับสร้าง .exe (เป็นตัวอักษร ปลอดภัย) #f"{get_symbol('ok')}
 IS_DEV_MODE = False 
 
 def get_symbol(symbol_type: str) -> str:
@@ -97,10 +100,12 @@ def extract_id_from_url(url):
     return ""
 # ⚠️ extract_id_from_url สำหรับ Cython compiler ใช้ตอน build
 
-def resource_path(relative_path):
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.abspath(relative_path)
+def resource_path(filename: str) -> str:
+    try:
+        base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, filename)
 
 
 def check_and_prepare_facebook_language(driver, url, load_cookies_func=None, js_callback=None):
@@ -599,7 +604,21 @@ def handle_generic_popups_fb(driver, print_to_gui, quick_check_timeout=1.0, skip
     return False
 
 
-def fb_login(driver, callback, print_to_gui):
+def is_fb_logged_in(driver):
+    try:
+        driver.find_element(By.XPATH,
+            '//input[@type="search" or @aria-label="Search Facebook"] | ' +
+            '//a[contains(@href, "profile.php?id=")] | ' +
+            '//a[@aria-label="หน้าหลัก" or @aria-label="Home"]'
+        )
+        return True
+    except:
+        return False
+    
+def fb_login(driver, callback, print_to_gui, username=None, password=None):
+    if is_fb_logged_in(driver):
+        print_to_gui(safe_utf8(f"{get_symbol('ok')} Chrome Profile พร้อมใช้งาน - ข้ามขั้นตอน login"))
+        return True
     callback({"type": "wait_login"})
     print_to_gui(safe_utf8("# DEBUG_FB: Starting Facebook login process..."))
     driver.get("https://www.facebook.com/")
@@ -679,9 +698,6 @@ def fb_login(driver, callback, print_to_gui):
 
     callback({"type": "error", "title": safe_utf8("Error (Facebook)"), "message": safe_utf8("รอการล็อกอิน Facebook นานเกินไป")})
     return False
-
-
-
 
 
 # (สมมติว่าฟังก์ชันอื่นๆ และตัวแปร XPATH_VIEW_COUNT อยู่ในไฟล์เดียวกัน)
@@ -895,20 +911,23 @@ def run_manual_date_fetch(profile_url, reel_url, reel_index, callback):
     # --- END: ขั้นตอนที่ 1 ---
 
     # reuse หรือสร้าง driver
-    if standby_driver_for_dates:
+    # --- START: สร้างหรือ reuse driver สำหรับ manual fetch ---
+    if standby_driver_for_dates and standby_driver_for_dates.session_id:
         driver = standby_driver_for_dates
         manual_using_auto_driver = True
-        # --- START: ขั้นตอนที่ 2 ---
-        # แสดงสถานะว่ากำลังใช้ Standby Driver
-        reuse_message = f"🕹️ [โหมดพิเศษ] กำลังใช้ Standby Driver..."
         print_to_gui(safe_utf8(f"{get_symbol('ok')} Reusing standby driver"))
-        callback({"type": "status", "message": safe_utf8(reuse_message), "special": True})
-        # --- END: ขั้นตอนที่ 2 ---
+        callback({"type": "status", "message": safe_utf8(f"{get_symbol('manual')} [โหมดพิเศษ] กำลังใช้ Standby Driver..."), "special": True})
     else:
-        driver = create_chrome_driver(print_to_gui=print_to_gui, headless=True)
+        # กรณีไม่มี standby หรือใช้ไม่ได้ → สร้างใหม่แบบ headless + โปรไฟล์จริง
+        print_to_gui(safe_utf8("⚠️ Standby driver missing or invalid → creating real-profile driver..."))
+        driver = start_browser("fb", headless=True)
         standby_driver_for_dates = driver
         manual_using_auto_driver = False
-        print_to_gui(safe_utf8(f"{get_symbol('debug')} Created new headless driver"))
+        print_to_gui(safe_utf8(f"{get_symbol('debug')} Started fallback real-profile driver"))
+    
+        save_cookies_fb(driver, cookie_file, print_to_gui, callback)
+        # --- END: สร้างหรือ reuse driver ---
+
 
     try:
         # Plan A: พยายามดึงข้อมูลด้วย JSON
@@ -917,10 +936,10 @@ def run_manual_date_fetch(profile_url, reel_url, reel_index, callback):
         
         # --- START: ขั้นตอนที่ 3 (สำเร็จ) ---
         # แสดงสถานะว่าดึงข้อมูลสำเร็จ
-        success_message = f"🕹️ [โหมดพิเศษ] ✅ ดึงข้อมูลสำเร็จ: {formatted}"
+        success_message = f"🕹️ [โหมดพิเศษ] ✅ ดึงข้อมูลสำเร็จ: {formatted}".encode('utf-8', errors='replace').decode()
         print_to_gui(safe_utf8(f"{get_symbol('ok')} JSON fetch success: {formatted}"))
         callback({"type": "status", "message": safe_utf8(success_message), "special": True})
-        time.sleep(1.5) # หน่วงเวลาเล็กน้อยให้ User เห็นข้อความก่อน
+        time.sleep(1) # หน่วงเวลาเล็กน้อยให้ User เห็นข้อความก่อน
         # --- END: ขั้นตอนที่ 3 ---
         
         callback({"type":"update_date_final","data":{"link":reel_url,"date":formatted}})
@@ -928,10 +947,10 @@ def run_manual_date_fetch(profile_url, reel_url, reel_index, callback):
     except Exception as e:
         # --- START: ขั้นตอนที่ 3 (ล้มเหลว) ---
         # แสดงสถานะว่าดึงข้อมูลล้มเหลว
-        fail_message = f"🕹️ [โหมดพิเศษ] ❌ ดึงข้อมูลล้มเหลว"
+        fail_message = "🕹️ [โหมดพิเศษ] ❌ ดึงข้อมูลล้มเหลว".encode('utf-8', errors='replace').decode('utf-8')
         print_to_gui(safe_utf8(f"{get_symbol('error')} JSON fetch for {reel_url} failed: {e}"))
         callback({"type": "status", "message": safe_utf8(fail_message), "special": True})
-        time.sleep(1.5) # หน่วงเวลาเล็กน้อยให้ User เห็นข้อความก่อน
+        time.sleep(1) # หน่วงเวลาเล็กน้อยให้ User เห็นข้อความก่อน
         # --- END: ขั้นตอนที่ 3 ---
         
         callback({
@@ -944,16 +963,24 @@ def run_manual_date_fetch(profile_url, reel_url, reel_index, callback):
 
     finally:
         manual_date_pending = False
-        if not manual_using_auto_driver:
-            try:
-                driver.quit()
+        # --- START: จุดที่แก้ไข ---
+        # ไม่ว่าจะเป็น driver ที่ใช้ซ้ำ หรือเพิ่งสร้างใหม่ เราจะเก็บมันไว้เสมอ
+        try:
+            # ตรวจสอบว่า driver ยังใช้งานได้หรือไม่
+            if driver and driver.session_id:
+                # ถ้า driver ยังอยู่ดี, อัปเดตตัวแปร global และเปลี่ยนสถานะไฟเป็น "พร้อม"
+                standby_driver_for_dates = driver
+                callback({"type": "driver_status", "mode": "manual-ready"})
+                print_to_gui(safe_utf8(f"{get_symbol('ok')} Standby/Manual driver remains active for next use."))
+            else:
+                # ถ้า driver พังไปแล้ว, รีเซ็ตค่า
                 standby_driver_for_dates = None
                 callback({"type": "driver_status", "mode": "none"})
-                print_to_gui(safe_utf8(f"{get_symbol('ok')} Manual driver closed."))
-            except Exception as e:
-                print_to_gui(safe_utf8(f"{get_symbol('warn')} Manual driver close failed: {e}"))
-        else:
-            print_to_gui(safe_utf8(f"{get_symbol('ok')} Skipped driver close (reused)."))
+        except Exception:
+            # กรณีเกิดข้อผิดพลาดอื่นๆ, ให้รีเซ็ตสถานะทั้งหมด
+            standby_driver_for_dates = None
+            callback({"type": "driver_status", "mode": "none"})
+        # --- END: จุดที่แก้ไข ---
 
         # **อย่า** reset manual_using_auto_driver ตรงนี้ ให้ค้างไว้รอบต่อไป
 
@@ -1056,19 +1083,46 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
             print_to_gui(safe_utf8("ลิงก์โปรไฟล์ไม่ได้ถูกระบุ, กำลังสร้างลิงก์อัตโนมัติ..."))
             if "/reels" in url_reels_tab_from_entry:
                 url_profile_main_from_entry = url_reels_tab_from_entry.split('/reels')[0]
-                print_to_gui(safe_utf8(f"✅ ลิงก์โปรไฟล์ที่สร้างขึ้น: {url_profile_main_from_entry}"))
+                print_to_gui(safe_utf8(f"{get_symbol('ok')} ลิงก์โปรไฟล์ที่สร้างขึ้น: {url_profile_main_from_entry}"))
             else:
                 url_profile_main_from_entry = url_reels_tab_from_entry
         
         # --- นิยามฟังก์ชัน setup_date_driver (ทำงานเบื้องหลัง) ---
         def setup_date_driver():
             global standby_driver_for_dates
-            print_to_gui(safe_utf8("⚙️ Creating new standby driver for Reels mode..."))
-            standby_driver_for_dates = create_chrome_driver(headless=True)
-            if standby_driver_for_dates:
-                fb_login(standby_driver_for_dates, lambda _: None, print_to_gui)
-                standby_driver_for_dates.get(url_profile_main_from_entry) 
+            print_to_gui(safe_utf8(f"{get_symbol('debug')} Creating new standby driver for Reels mode..."))
+
+            driver = create_chrome_driver(headless=True)
+            login_success = False
+
+            if driver:
+                try:
+                    # ลอง login ด้วย cookie
+                    login_success = fb_login(driver, lambda _: None, print_to_gui)
+                except Exception as e:
+                    print_to_gui(safe_utf8(f"{get_symbol('error')} FB Cookie login failed: {e}"))
+                    login_success = False
+
+            if not login_success:
+                # ปิดตัวที่ใช้ cookie แล้วไม่ได้ผล
+                try:
+                    driver.quit()
+                except: pass
+
+                # ใช้ driver แบบโปรไฟล์จริงแต่เป็น headless มาแทน
+                print_to_gui(safe_utf8(f"{get_symbol('warn')} Cookie login failed → using real FB profile (headless fallback)"))
+                driver = start_browser("fb", headless=True)
+                if not driver:
+                    print_to_gui(safe_utf8(f"{get_symbol('error')} ไม่สามารถสร้าง fallback driver ได้"))
+                    return
+
+            standby_driver_for_dates = driver
+
+            try:
+                driver.get(url_profile_main_from_entry)
                 print_to_gui(safe_utf8(f"{get_symbol('ok')} Standby browser for Reels mode is ready."))
+            except Exception as e:
+                print_to_gui(safe_utf8(f"{get_symbol('error')} Failed to prepare standby driver: {e}")) 
                 # (เอา callback ออกจากตรงนี้เพื่อแก้ปัญหา Race Condition)
 
         # --- สั่งให้ Thread เบื้องหลังเริ่มทำงาน ---
@@ -1076,7 +1130,7 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
 
         # --- เริ่มกระบวนการสแกนหลักด้วย Driver ที่มองเห็น ---
         print_to_gui(safe_utf8("กำลังเริ่มต้น WebDriver หลัก..."))
-        driver = create_chrome_driver(print_to_gui=print_to_gui, headless=False)
+        driver = start_browser("fb")
         if not driver:
              raise Exception("ไม่สามารถสร้าง Chrome Driver หลักได้")
              
@@ -1153,7 +1207,7 @@ def run_fb_scan(url_reels_tab_from_entry, url_profile_main_from_entry, max_clips
 
         total_views = sum(r['views'] for r in collected_reels_list)
         counted_clips = len(collected_reels_list)
-        final_message = safe_utf8(f"✅ [FB] สแกนเสร็จสมบูรณ์: {counted_clips} คลิป | รวม {total_views:,} วิว")
+        final_message = safe_utf8(f"{get_symbol('ok')} [FB] สแกนเสร็จสมบูรณ์: {counted_clips} คลิป | รวม {total_views:,} วิว")
         print_to_gui(final_message)
         callback({"type": "update_date_final", "data": {}})
         callback({"type": "status", "message": final_message, "final": True})

@@ -6,6 +6,7 @@ import os
 import urllib.request
 import tempfile
 import subprocess
+import shutil
 import sys
 import fb_engine
 import ig_engine
@@ -13,42 +14,58 @@ import fb_video_engine
 import ctypes
 import sys
 import time
+import logging, os, sys
+import shutil
+# ต้นโปรแกรม
+# ── สำคัญ ตั้ง cwd ให้ตรงกับ exe หรือ script folder ──
+if getattr(sys, 'frozen', False):
+    os.chdir(os.path.dirname(sys.executable))
+else:
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+
+log_path = os.path.join(os.path.dirname(sys.executable), "app.log")
+logging.basicConfig(level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.FileHandler(log_path, encoding='utf-8'),]
+)
+logger = logging.getLogger(__name__)
+# ── สำคัญ END cwd ให้ตรงกับ exe หรือ script folder ──
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except (AttributeError, OSError):
     pass
 
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.4.4"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
 
 window = None
 
 def resource_path(relative_path):
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
-
-def open_in_browser(url):
-    if getattr(sys, 'frozen', False):  # ถ้ารันจาก .exe
-        # เปิดแบบไม่ให้ console โผล่
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        subprocess.Popen(['cmd', '/c', 'start', '', url], startupinfo=startupinfo)
+    if getattr(sys, 'frozen', False):
+        # onefile แตกที่ _MEIPASS, onedir ไม่มี _MEIPASS แต่ sys.executable อยู่ในโฟลเดอร์ exe
+        base = getattr(sys, '_MEIPASS', None) or os.path.dirname(sys.executable)
     else:
-        webbrowser.open(url)
-
+        # รันด้วย python ตรง ๆ ให้ใช้โฟลเดอร์สคริปต์
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, relative_path)
 
 class Api:
     def __init__(self):
+        # --- 🔽🔽🔽 เพิ่มบรรทัดนี้เข้าไปครับ 🔽🔽🔽 ---
+        self.stop_event = threading.Event()
+        # --- 🔼🔼🔼 จบส่วนที่เพิ่ม 🔼🔼🔼
         self.window = None
 
     def python_callback_to_js(self, response_data):
         if self.window:
-            js_response_str = json.dumps(response_data, ensure_ascii=False)
+            # ให้ escape unicode (ไทย) เป็น \uXXXX แทน
+            js_response_str = json.dumps(response_data, ensure_ascii=True)
             self.window.evaluate_js(f'handle_python_callback({js_response_str})')
 
     def start_scan(self, platform, data):
+        self.stop_event.clear() # เคลียร์สถานะปุ่มหยุดก่อนเริ่มงานใหม่
         print(f"API: ได้รับคำสั่ง start_scan สำหรับ '{platform}' พร้อมข้อมูล: {data}".encode('utf-8', errors='replace').decode())
 
         target_function = None
@@ -78,7 +95,8 @@ class Api:
             args = (
                 data.get('reelsUrl'),
                 data.get('clipCount'),
-                self.python_callback_to_js
+                self.python_callback_to_js,
+                self.stop_event  # <-- เพิ่มตัวนี้เข้าไปครับ
             )
 
         if target_function:
@@ -92,18 +110,72 @@ class Api:
 
     
     def open_external_link(self, url):
+
         if not (url and url.startswith('http')):
             return
 
         print(f"API: เปิดลิงก์ด้วย UI แบบ Mini-Bar: {url}")
+         # ── แทรกตรงนี้ ──
+        logger.debug(f"cwd: {os.getcwd()}")
+        profile_ig = os.path.abspath("chrome_profile_ig")
+        profile_fb = os.path.abspath("chrome_profile_fb")
+        logger.debug(f"profile_ig exists? {os.path.exists(profile_ig)}")
+        logger.debug(f"profile_fb exists? {os.path.exists(profile_fb)}")
 
-        # --- 🔥 HOT FIX: ถ้าเป็น Instagram → เปิดเบราว์เซอร์หลักของระบบแทน ---
-        if "instagram.com" in url:
-            print("⚠️ เปิดด้วย Browser หลัก (Instagram Block WebView)")
+        chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        ]
+        chrome_exe = next((p for p in chrome_paths if os.path.exists(p)), None)
+        logger.debug(f"chrome_exe: {chrome_exe}")
+
+        if not chrome_exe:
+            print(" ไม่พบ Chrome ที่ตำแหน่งมาตรฐาน  fallback ไป webbrowser.open()")
             webbrowser.open(url)
             return
 
-        print(f"API: เปิดลิงก์ด้วย UI แบบ Mini-Bar: {url}")
+        logger.debug(f"Checking Chrome App Mode for url={url}")
+        is_launched = False
+        
+        # --- 🔽 จุดที่แก้ไข 🔽 ---
+        if chrome_exe and ("facebook.com" in url or "instagram.com" in url):
+            
+            # เลือกโฟลเดอร์โปรไฟล์ตาม URL
+            if "facebook.com" in url:
+                profile_path = profile_fb
+                logger.debug("URL matched FB, using FB profile.")
+            else: # "instagram.com" in url
+                profile_path = profile_ig
+                logger.debug("URL matched IG, using IG profile.")
+
+            # สร้าง List ของคำสั่งสำหรับ Popen
+            command = [
+                chrome_exe,
+                '--app=' + url,
+                f'--user-data-dir={profile_path}', # เพิ่มอาร์กิวเมนต์นี้
+                '--window-size=800,700'
+            ]
+
+            logger.debug(f"URL matched, launching Chrome App with command: {command}")
+            
+           # --- 🔽 เพิ่ม/แก้ไขส่วนนี้ 🔽 ---
+            # ใน Windows, ใช้ creationflags เพื่อให้โปรเซสใหม่แยกตัวเป็นอิสระ
+            # ป้องกันไม่ให้มันถูก "ดูด" โดยไดร์เวอร์ Selenium ที่ทำงานอยู่เบื้องหลัง
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.DETACHED_PROCESS
+
+            proc = subprocess.Popen(
+                command,
+                creationflags=creation_flags  # <--- เพิ่มพารามิเตอร์นี้เข้าไป
+            )
+            # --- 🔼 สิ้นสุดส่วนแก้ไข 🔼 ---
+            
+            logger.debug(f"Chrome App launched (pid={proc.pid})")
+            is_launched = True
+
+        if is_launched:
+            return
 
         spinner_html = """
         <html><head><style>
@@ -112,84 +184,91 @@ class Api:
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         </style></head><body><div class="spinner"></div></body></html>
         """
-        
-        # --- ✅ แก้ไข: JS Payload สำหรับสร้าง Mini-Bar ที่กดขยายได้ ---
+
         js_payload = f"""
         try {{
-            if (!document.getElementById('rcp-container')) {{
-                
-                // 1. สร้าง HTML: ประกอบด้วยตัว Container, ปุ่มไอคอน, และช่อง Input
-                const rcpContainer = document.createElement('div');
-                rcpContainer.id = 'rcp-container';
-                rcpContainer.innerHTML = `
-                    <div id="rcp-toggle-btn">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5858 13.4142L7.75736 16.2426C5.63604 18.364 3.51472 18.364 1.3934 16.2426C-0.727922 14.1213 -0.727922 11.8787 1.3934 9.75736L4.22183 6.92893C6.34315 4.80761 8.46447 4.80761 10.5858 6.92893L11.2929 7.63604" stroke="#333" stroke-width="2" stroke-linecap="round"/><path d="M13.4142 10.5858L16.2426 7.75736C18.364 5.63604 20.4853 5.63604 22.6066 7.75736C24.7279 9.87868 24.7279 12.1213 22.6066 14.2426L19.7782 17.0711C17.6569 19.1924 15.5355 19.1924 13.4142 17.0711L12.7071 16.364" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>
-                    </div>
-                    <input id="rcp-url-input" type="text" value="{url}" readonly />
-                `;
-                document.body.appendChild(rcpContainer);
+            setTimeout(() => {{
+                if (!document.getElementById('rcp-container')) {{
+                    const rcpContainer = document.createElement('div');
+                    rcpContainer.id = 'rcp-container';
+                    rcpContainer.innerHTML = `
+                        <div id="rcp-toggle-btn">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M10.5858 13.4142L7.75736 16.2426C5.63604 18.364 3.51472 18.364 1.3934 16.2426C-0.727922 14.1213 -0.727922 11.8787 1.3934 9.75736L4.22183 6.92893C6.34315 4.80761 8.46447 4.80761 10.5858 6.92893L11.2929 7.63604" stroke="#333" stroke-width="2" stroke-linecap="round"/>
+                                <path d="M13.4142 10.5858L16.2426 7.75736C18.364 5.63604 20.4853 5.63604 22.6066 7.75736C24.7279 9.87868 24.7279 12.1213 22.6066 14.2426L19.7782 17.0711C17.6569 19.1924 15.5355 19.1924 13.4142 17.0711L12.7071 16.364" stroke="#333" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <input id="rcp-url-input" type="text" value="{url}" readonly />
+                    `;
+                    document.body.appendChild(rcpContainer);
 
-                // 2. สร้าง CSS: กำหนดสไตล์ของปุ่มปกติและตอนที่ขยายแล้ว
-                const style = document.createElement('style');
-                style.textContent = `
-                    #rcp-container {{
-                        position: fixed; z-index: 99999999;
-                        /* State 1: ปุ่มกลมๆ (ค่าเริ่มต้น) */
-                        bottom: 20px; right: 20px; width: 55px; height: 55px;
-                        background: #f0f0f0; border-radius: 50%;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-                        cursor: pointer; transition: all 0.3s ease-in-out;
-                        display: flex; justify-content: center; align-items: center;
-                    }}
-                    #rcp-container.rcp-expanded {{
-                        /* State 2: แถบยาว (เมื่อถูกคลิก) */
-                        width: 100%; height: auto; bottom: 0; right: 0;
-                        border-radius: 0; padding: 15px 10px;
-                        border-top: 1px solid #c0c0c0;
-                        background: linear-gradient(to top, #e9e9e9, #f5f5f5);
-                    }}
-                    #rcp-url-input {{ display: none; }} /* ซ่อน input ไว้ก่อน */
-                    #rcp-container.rcp-expanded #rcp-url-input {{
-                        display: block; width: 95%; padding: 10px 15px; font-size: 14px;
-                        border-radius: 8px; border: 1px solid #bbb; background-color: #ffffff;
-                        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); text-align: center;
-                        outline: none; color: #000 !important;
-                    }}
-                    #rcp-toggle-btn {{ display: flex; align-items: center; justify-content: center; }}
-                    #rcp-container.rcp-expanded #rcp-toggle-btn {{ display: none; }} /* ซ่อนปุ่มไอคอนเมื่อขยาย */
-                `;
-                document.head.appendChild(style);
-
-                // 3. สร้าง Logic: เพิ่ม Event Listener ให้ปุ่ม
-                const urlInput = document.getElementById('rcp-url-input');
-                rcpContainer.addEventListener('click', (event) => {{
-                    if (event.target !== urlInput) {{
-                        const isExpanded = rcpContainer.classList.contains('rcp-expanded');
-                        rcpContainer.classList.toggle('rcp-expanded');
-                        if (!isExpanded) {{
-                            setTimeout(() => urlInput.select(), 50);
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        #rcp-container {{
+                            position: fixed; z-index: 99999999;
+                            bottom: 20px; right: 20px; width: 55px; height: 55px;
+                            background: #f0f0f0; border-radius: 50%;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+                            cursor: pointer; transition: all 0.3s ease-in-out;
+                            display: flex; justify-content: center; align-items: center;
                         }}
-                    }}
-                }});
-            }}
-        }} catch (e) {{ console.error('Failed to inject RCP Mini-Bar:', e); }}
+                        #rcp-container.rcp-expanded {{
+                            width: 100%; height: auto; bottom: 0; right: 0;
+                            border-radius: 0; padding: 15px 10px;
+                            border-top: 1px solid #c0c0c0;
+                            background: linear-gradient(to top, #e9e9e9, #f5f5f5);
+                        }}
+                        #rcp-url-input {{ display: none; }}
+                        #rcp-container.rcp-expanded #rcp-url-input {{
+                            display: block; width: 95%; padding: 10px 15px; font-size: 14px;
+                            border-radius: 8px; border: 1px solid #bbb; background-color: #ffffff;
+                            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); text-align: center;
+                            outline: none; color: #000 !important;
+                        }}
+                        #rcp-toggle-btn {{ display: flex; align-items: center; justify-content: center; }}
+                        #rcp-container.rcp-expanded #rcp-toggle-btn {{ display: none; }}
+                    `;
+                    document.head.appendChild(style);
+
+                    const urlInput = document.getElementById('rcp-url-input');
+                    rcpContainer.addEventListener('click', (event) => {{
+                        if (event.target !== urlInput) {{
+                            const isExpanded = rcpContainer.classList.contains('rcp-expanded');
+                            rcpContainer.classList.toggle('rcp-expanded');
+                            if (!isExpanded) {{
+                                setTimeout(() => urlInput.select(), 50);
+                            }}
+                        }}
+                    }});
+                }}
+            }}, 400);
+        }} catch (e) {{
+            console.error('Failed to inject RCP Mini-Bar:', e);
+        }}
         """
 
-        # --- ส่วนที่เหลือของฟังก์ชันทำงานเหมือนเดิม ---
         def on_page_loaded():
-            time.sleep(0.5)
-            if popup_window:
-                popup_window.evaluate_js(js_payload)
-                
+            for i in range(3):
+                try:
+                    time.sleep(0.3)  # รอโหลดจริง
+                    if popup_window:
+                        popup_window.evaluate_js(js_payload)
+                        logger.debug(f"inject JS สำเร็จรอบที่ {i+1}")
+                        return
+                except Exception as e:
+                    logger.error(f"รอบที่ {i+1} inject JS ล้มเหลว: {e}", exc_info=True)
+            logger.error("inject JS ล้มเหลวทั้งหมด  ข้าม")
+
         popup_window = webview.create_window('ReelsCounterPro', html=spinner_html, width=1050, height=650, resizable=True)
         popup_window.events.loaded += on_page_loaded
-        
+
         def navigate_to_target():
             time.sleep(0.1)
             if popup_window:
                 popup_window.load_url(url)
 
         threading.Thread(target=navigate_to_target, daemon=True).start()
+        
 
     def start_manual_date_fetch(self, platform, data):
         print(f"API: ได้รับคำสั่ง Manual Date Fetch สำหรับ '{platform}' Data: {data}".encode('utf-8', errors='replace').decode())
@@ -198,7 +277,7 @@ class Api:
         args = ()
 
         if platform == 'ig':
-            target_function = ig_engine.fetch_reel_post_date_ig
+            target_function = ig_engine.manual_fetch_single_date_ig 
             args = (
                 data.get('reelUrl'),
                 self.python_callback_to_js,

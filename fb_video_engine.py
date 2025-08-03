@@ -19,6 +19,7 @@ from fb_engine import check_and_prepare_facebook_language, auto_change_language_
 from fb_engine import extract_reel_id_from_url, clean_url 
 # 1. import fb_engine มาทั้งโมดูล
 import fb_engine
+from browser_engine import start_browser
 
 def safe_utf8(text):
     try:
@@ -132,14 +133,17 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
 
         # --- ส่วนที่ 3: การทำงานของ Driver หลัก (โค้ดเดิมของคุณ) ---
         log_func(safe_utf8("กำลังเริ่มต้น WebDriver หลัก..."))
-        driver = create_chrome_driver(headless=False)
+        driver = start_browser(platform="fb")
         if not driver:
             log_func(safe_utf8(f"{get_symbol('error')} ไม่สามารถสร้าง Chrome Driver ได้"))
             return
         
         
-        log_func(safe_utf8("กำลังล็อกอิน..."))
-        fb_login(driver, lambda _: None, log_func)
+        if "login" in driver.current_url:
+            log_func(safe_utf8("กำลังล็อกอิน..."))
+            fb_login(driver, lambda _: None, log_func)
+        else:
+            log_func(safe_utf8(f"{get_symbol('ok')} Chrome Profile พร้อมใช้งาน - ข้ามขั้นตอน login"))
 
         log_func(safe_utf8("กำลังตรวจสอบและตั้งค่าภาษา Facebook..."))
         check_and_prepare_facebook_language(
@@ -147,12 +151,59 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
             url="https://www.facebook.com/",
             js_callback=lambda data: log_func(data.get("message", safe_utf8("")))
         )
-        log_func(safe_utf8("✓ ล็อกอินสำเร็จ"))
-        
+        log_func(safe_utf8(f"{get_symbol('ok')} ล็อกอินสำเร็จ"))
+
+
+        header = None
+        section = None
+
         log_func(safe_utf8(f"{get_symbol('scan')} กำลังไปยังหน้าเพจ: {page_url}"))
         driver.get(page_url)
-        header = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//span[text()='วิดีโอ']")))
-        section = header.find_element(By.XPATH, "../following-sibling::div")
+
+        for _ in range(20):  # สแกนรอบละ 0.25 วิ รวม ~7.5 วิ
+            # 1. หา header แบบมั่นใจว่าใช้ได้จริง
+            if not header:
+                headers = driver.find_elements(By.XPATH, "//span[text()='วิดีโอ']")
+                for h in headers:
+                    try:
+                        h.find_element(By.XPATH, "../following-sibling::div")
+                        header = h
+                        break
+                    except:
+                        continue
+
+            # 2. หา section จาก header
+            if header and not section:
+                try:
+                    section = header.find_element(By.XPATH, "../following-sibling::div")
+                except:
+                    try:
+                        section = header.find_element(
+                            By.XPATH,
+                            "ancestor::div[contains(@class,'x1y1aw1k') or contains(@class,'x78zum5')][1]/following-sibling::div"
+                        )
+                    except:
+                        pass
+
+            # ✅ ถ้าเจอแล้ว → หยุด loop
+            if header and section:
+                break
+
+            # Scroll ทีละน้อยเพื่อโหลด DOM เพิ่ม
+            driver.execute_script("window.scrollBy(0, 1000);")
+            time.sleep(0.2)
+
+        # ❌ ยังไม่เจอ
+        if not section:
+            log_func(safe_utf8(f"{get_symbol('error')} ไม่สามารถหา Section วิดีโอได้จาก DOM (ทั้งสองวิธี)"))
+            callback_func({
+                "type": "error",
+                "title": "ไม่พบ Section วิดีโอ",
+                "message": "DOM อาจยังไม่โหลด หรือมีการเปลี่ยนแปลง"
+            })
+            return
+
+        # ✅ เจอแล้ว → Scroll ไปที่ section เพื่อให้เริ่มดึงวิดีโอได้เลย
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", section)
         time.sleep(2)
         
@@ -260,7 +311,7 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
                             "data": {"id": _vid, "link": _url, "date": date}
                         })
                 except Exception as e:
-                    log_func(safe_utf8(f"⚠️ ดึงวันที่ล้มเหลว (รอบแรก): {video_id} | {str(e)}"))
+                    log_func(safe_utf8(f"{get_symbol('error')} ดึงวันที่ล้มเหลว (รอบแรก): {video_id} | {str(e)}"))
                     failed_tasks.append({'link': url, 'id': video_id, 'index': index})
 
         # ✅ 5. แผน B: เรียกใช้ "ผู้เชี่ยวชาญ" พร้อม "แผนที่" ที่ถูกต้อง
@@ -280,33 +331,10 @@ def run_fb_video_scan(page_url: str, max_count: int, callback_func: callable, lo
                     callback=callback_func
                 )
                 time.sleep(1) 
-        
-        # --- ส่วนจบการทำงาน (เหมือนเดิม) ---
-        total_views = sum(item['views'] for item in all_video_data)
-        final_message = safe_utf8(f"✅ [FB] สแกนเสร็จสมบูรณ์: {len(all_video_data)} คลิป | รวม {total_views:,} วิว")
-        log_func(final_message)
-        
-        callback_func({"type": "update_date_final", "data": {}})
-        time.sleep(0.1)
-        
-        callback_func({"type": "status", "message": final_message, "final": True})
 
-        log_func(safe_utf8("Checking final standby driver state (before cleanup)..."))
-        try:
-            if fb_engine.standby_driver_for_dates and fb_engine.standby_driver_for_dates.session_id:
-                callback_func({"type": "driver_status", "mode": "manual-ready"})
-            else:
-                callback_func({"type": "driver_status", "mode": "none"})
-        except Exception:
-            callback_func({"type": "driver_status", "mode": "none"})
-
-
-        
-
-        
         # --- ส่วนจบการทำงาน (ฉบับปรับปรุง) ---
         total_views = sum(item['views'] for item in all_video_data)
-        final_message = safe_utf8(f"✅ [FB] สแกนเสร็จสมบูรณ์: {len(all_video_data)} คลิป | รวม {total_views:,} วิว")
+        final_message = safe_utf8(f"{get_symbol('ok')} [FB] สแกนเสร็จสมบูรณ์: {len(all_video_data)} คลิป | รวม {total_views:,} วิว")
         log_func(final_message)
         callback_func({"type": "update_date_final", "data": {}})
         time.sleep(0.1)
