@@ -1,6 +1,6 @@
 # constants_FB.py (Updated)
 
-# === View Count XPath Selector (v2 - Handles unit-less numbers) ===
+# === View Count XPath Selector (v2 - Handles unit-less numbers) === เช็คแล้ว
 XPATH_VIEW_COUNT = (
     './/span[contains(@class, "x1lliihq") and ('
     # --- Existing checks for units ---
