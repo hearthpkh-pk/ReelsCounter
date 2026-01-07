@@ -37,7 +37,7 @@ try:
 except (AttributeError, OSError):
     pass
 
-APP_VERSION = "1.4.4"
+APP_VERSION = "1.4.7"
 IS_POST_INSTALL = len(sys.argv) > 1 and sys.argv[1] == '/postinstall'
 
 window = None
@@ -110,8 +110,11 @@ class Api:
 
     
     def open_external_link(self, url):
-
-        if not (url and url.startswith('http')):
+        try:
+            if not (url and url.startswith('http')):
+                return
+        except Exception as e:
+            print(f"Error in open_external_link: {e}")
             return
 
         print(f"API: เปิดลิงก์ด้วย UI แบบ Mini-Bar: {url}")
@@ -162,12 +165,17 @@ class Api:
             # ใน Windows, ใช้ creationflags เพื่อให้โปรเซสใหม่แยกตัวเป็นอิสระ
             # ป้องกันไม่ให้มันถูก "ดูด" โดยไดร์เวอร์ Selenium ที่ทำงานอยู่เบื้องหลัง
             creation_flags = 0
+            startupinfo = None
+            
             if sys.platform == "win32":
+                # ใช้เฉพาะ DETACHED_PROCESS เพื่อให้ Chrome แยกตัวเป็นอิสระ
                 creation_flags = subprocess.DETACHED_PROCESS
 
             proc = subprocess.Popen(
                 command,
-                creationflags=creation_flags  # <--- เพิ่มพารามิเตอร์นี้เข้าไป
+                creationflags=creation_flags,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
             )
             # --- 🔼 สิ้นสุดส่วนแก้ไข 🔼 ---
             
@@ -256,8 +264,9 @@ class Api:
                         logger.debug(f"inject JS สำเร็จรอบที่ {i+1}")
                         return
                 except Exception as e:
-                    logger.error(f"รอบที่ {i+1} inject JS ล้มเหลว: {e}", exc_info=True)
-            logger.error("inject JS ล้มเหลวทั้งหมด  ข้าม")
+                    error_message = f"ไม่สามารถเปิดลิงก์ภายนอกได้: {e}"
+                    logger.error(error_message, exc_info=True)
+                    self.show_alert(f"เกิดข้อผิดพลาดในการเปิดเบราว์เซอร์\n\nError: {e}", "error")
 
         popup_window = webview.create_window('ReelsCounterPro', html=spinner_html, width=1050, height=650, resizable=True)
         popup_window.events.loaded += on_page_loaded

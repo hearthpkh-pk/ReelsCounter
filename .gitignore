@@ -4,3 +4,8 @@ clear_cache.bat
 fb_cookies.json
 ig_cookies.json
 ReelsCounterPro.spec
+chrome_profile_fb/
+chrome_profile_ig/
+test/
+.vscode/
+__pycache__/

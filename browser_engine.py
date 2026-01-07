@@ -8,9 +8,6 @@ import os
 import sys
 import ctypes
 from selenium.common.exceptions import TimeoutException
-from pathlib import Path
-
-
 
 # ================== START: ฟังก์ชันแสดงสัญลักษณ์ ==================
 IS_DEV_MODE = False
@@ -49,7 +46,7 @@ def get_symbol(symbol_type: str) -> str:
 
 
 # แก้ไขที่ signature ของฟังก์ชัน ให้รับ headless ได้
-def start_browser(platform: str = "ig", print_to_gui=print, headless: bool = False):
+def start_browser(platform: str = "ig", headless: bool = False):
     driver = None  # ✅ ต้องกำหนดก่อน เพื่อให้ except จับได้แน่
 
     # ✅ ใช้ path ถาวร: ที่โฟลเดอร์เดียวกับ EXE หรือ .py
@@ -89,14 +86,19 @@ def start_browser(platform: str = "ig", print_to_gui=print, headless: bool = Fal
                 break
 
         service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
+        driver  = webdriver.Chrome(service=service, options=options)
+        
+        # เพิ่มการตั้งค่า window state เพื่อให้แน่ใจว่าเบราว์เซอร์จะแสดงผล
+        if not headless:
+            try:
+                driver.maximize_window()
+                driver.set_window_position(0, 0)
+            except:
+                pass
+        
         driver.get(target_url)
 
-        # ตรวจว่าต้อง initialize pop-ups/locale หรือยัง
-        init_flag = Path(profile_path) / ".reels_initialized"
-        need_init = not init_flag.exists()
-
-        # ตรวจล็อกอินสั้น ๆ (5 วินาที) ว่ายังล็อกอินอยู่ไหม
+        # ตรวจสอบเบื้องต้นว่า Login สำเร็จอยู่แล้วหรือไม่ (timeout สั้น 5 วินาที)
         try:
             if platform == 'ig':
                 WebDriverWait(driver, 5).until(
@@ -107,14 +109,14 @@ def start_browser(platform: str = "ig", print_to_gui=print, headless: bool = Fal
                     EC.presence_of_element_located((By.XPATH, '//input[@type="search" and contains(@aria-label, "ค้นหา")]'))
                 )
         except TimeoutException:
-            # ยังไม่ล็อกอินหรือคุกกี้หมดอายุ → เด้งให้ล็อกอินใหม่
+            # โปรไฟล์ยังไม่ล็อกอินหรือพัง ให้เด้ง MessageBox ให้ผู้ใช้ล็อกอินใหม่
             ctypes.windll.user32.MessageBoxW(
                 None,
                 f"กรุณาล็อกอินใน {platform.upper()} แล้วกด OK เพื่อดำเนินการต่อ",
                 "ReelsCounterPro",
                 0
             )
-            # รอจนล็อกอินเสร็จ (360 วินาที)
+            # รอจนกว่าจะล็อกอินสำเร็จ (นานสุด 360 วินาที)
             if platform == 'ig':
                 WebDriverWait(driver, 360).until(
                     EC.presence_of_element_located((By.XPATH, '//a[contains(@href, "/direct/inbox")]'))
@@ -123,20 +125,6 @@ def start_browser(platform: str = "ig", print_to_gui=print, headless: bool = Fal
                 WebDriverWait(driver, 360).until(
                     EC.presence_of_element_located((By.XPATH, '//input[@type="search" and contains(@aria-label, "ค้นหา")]'))
                 )
-            need_init = True
-
-        # ถ้าต้อง initialize (ครั้งแรกหรือหลัง login ใหม่) ให้จัดการ pop-ups & locale
-        if need_init:
-            if platform == 'fb':
-                from fb_engine import handle_generic_popups_fb
-                handle_generic_popups_fb(driver, print_to_gui, quick_check_timeout=1.0, skip_if_known_clean=False)
-                lang = driver.find_element(By.TAG_NAME, "html").get_attribute("lang")
-                if not lang.startswith("th"):
-                    driver.get(f"{target_url}?locale=th_TH")
-            else:  # ig
-                from ig_engine import handle_generic_popups_ig
-                handle_generic_popups_ig(driver, print_to_gui, quick_check_timeout=1.0, skip_if_known_clean=False)
-            init_flag.write_text("initialized")
 
         return driver
 
@@ -148,5 +136,4 @@ def start_browser(platform: str = "ig", print_to_gui=print, headless: bool = Fal
         except:
             pass
         return None
-
 

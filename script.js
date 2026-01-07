@@ -4,7 +4,7 @@
 // =======================================================
 console.log('✅ script.js โหลดมาแล้ว');
 // --- ค่าคงที่ (ลูกพี่ต้องแก้ LOCAL_VERSION ทุกครั้งที่สร้างเวอร์ชันใหม่) ---
-const LOCAL_VERSION   = "1.4.4";
+const LOCAL_VERSION   = "1.4.7";
 const UPDATE_JSON_URL = "https://raw.githubusercontent.com/Babydunx1/reels-counter-update/main/app_version.json";
 
 // --- ตัวแปรสำหรับเก็บข้อมูลเวอร์ชันล่าสุดจาก Server ---
@@ -55,29 +55,29 @@ window.pywebview.api.onLog((message) => {
   requestAnimationFrame(update);
 }
 // --- ฟังก์ชันสำทดสอบตาราง ---
-  function insertTestLink() {
-    const tbody = document.querySelector('#fb-table tbody');
-    const testLinks = [
-        "https://www.facebook.com/thaich8news/videos/772262488492296",
-        "https://www.facebook.com/reel/749477930958603",
-        "https://www.instagram.com/reel/DMUz9LZzWyF/"
-    ];
+//   function insertTestLink() {
+//     const tbody = document.querySelector('#fb-table tbody');
+//     const testLinks = [
+//         "https://www.facebook.com/thaich8news/videos/772262488492296",
+//         "https://www.facebook.com/reel/749477930958603",
+//         "https://www.instagram.com/reel/DMUz9LZzWyF/"
+//     ];
 
-    testLinks.forEach((reelUrl) => {
-        const row = document.createElement('tr');
-        row.setAttribute("data-link", reelUrl);
-        row.innerHTML = `
-            <td>#</td>
-            <td>${reelUrl}</td>
-            <td>–</td>
-            <td>–</td>
-        `;
+//     testLinks.forEach((reelUrl) => {
+//         const row = document.createElement('tr');
+//         row.setAttribute("data-link", reelUrl);
+//         row.innerHTML = `
+//             <td>#</td>
+//             <td>${reelUrl}</td>
+//             <td>–</td>
+//             <td>–</td>
+//         `;
 
         
 
-        tbody.prepend(row);
-    });
-}
+//         tbody.prepend(row);
+//     });
+// }
 
 /**
  * ฟังก์ชันเปรียบเทียบเวอร์ชัน (เช่น '1.0' ใหม่กว่า '0.9')

@@ -44,59 +44,84 @@ def resource_path(filename: str) -> str:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, filename)
 
+# ==============================================================================
+# 🔴 START: IG ENGINE - ฉบับแก้ไขให้ส่งเสียง Error 🔴
+# ==============================================================================
+
 def create_chrome_driver(print_to_gui=print, headless=False, user_data_dir=None):
-    options = webdriver.ChromeOptions()
-    options.add_argument("--window-size=1024,600")
-
-    # --- เพิ่มส่วนนี้เข้ามา ---
-    if user_data_dir:
-        options.add_argument(f"--user-data-dir={user_data_dir}")
-    # -------------------------
-
-    if headless:
-        options.add_argument("--headless=new")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-    
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    )
-
+    time.sleep(1) # รอ 1 วินาทีเพื่อให้ทุกอย่างพร้อมก่อนเริ่ม
     try:
-        print_to_gui(f"{get_symbol('info')} พยายามเปิด Chrome แบบปกติ (WebDriverManager)...")
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
+        options = webdriver.ChromeOptions()
+        options.add_argument("--window-size=1024,600")
 
-        if not headless:
-            driver.set_window_size(1024, 600)
+        if user_data_dir:
+            options.add_argument(f"--user-data-dir={user_data_dir}")
 
-        print_to_gui(f"{get_symbol('ok')} เปิด Chrome สำเร็จ (WebDriverManager)")
-        return driver
+        if headless:
+            options.add_argument("--headless=new")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+        
+        options.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+        
+        # --- ส่วนที่ 1: ลองใช้ WebDriverManager เป็นหลัก ---
+        try:
+            print_to_gui(f"{get_symbol('info')} พยายามเปิด Chrome สำหรับ IG (WebDriverManager)...")
+            
+            # log_path=os.devnull เพื่อซ่อน log ของ chromedriver ไม่ให้รก console
+            service = Service(ChromeDriverManager().install(), log_path=os.devnull)
+            driver = webdriver.Chrome(service=service, options=options)
 
-    except WebDriverException as e:
-        print_to_gui(f"{get_symbol('warn')} WebDriverManager ล้มเหลว: {e}")
-        print_to_gui(f"{get_symbol('info')} ลอง fallback: ระบุ path chrome.exe เอง")
+            if not headless:
+                driver.set_window_size(1024, 600)
 
-        fallback_paths = [
-            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-            r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-        ]
+            print_to_gui(f"{get_symbol('ok')} เปิด Chrome สำหรับ IG สำเร็จ")
+            return driver
 
-        for fallback_path in fallback_paths:
-            if os.path.exists(fallback_path):
-                options.binary_location = fallback_path
-                try:
-                    driver = webdriver.Chrome(service=service, options=options)
-                    print_to_gui(f"{get_symbol('ok')} เปิด Chrome ด้วย fallback path: {fallback_path}")
-                    return driver
-                except Exception as fallback_error:
-                    print_to_gui(f"{get_symbol('error')} ล้มเหลวที่ path: {fallback_path} → {fallback_error}")
+        except WebDriverException as e:
+            # --- ส่วนที่ 2: ถ้าวิธีแรกพลาด, ลองวิธีสำรอง (Fallback) ---
+            print_to_gui(f"{get_symbol('warn')} IG WebDriverManager ล้มเหลว: {e}")
+            print_to_gui(f"{get_symbol('info')} IG ลอง fallback: ระบุ path chrome.exe เอง")
 
-        print_to_gui(f"{get_symbol('error')} fallback ทั้งหมดไม่สำเร็จ")
-        return None
+            fallback_paths = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+            ]
+
+            # เราต้องสร้าง service object ใหม่สำหรับ fallback ด้วย
+            service = Service(ChromeDriverManager().install(), log_path=os.devnull)
+
+            for fallback_path in fallback_paths:
+                if os.path.exists(fallback_path):
+                    options.binary_location = fallback_path
+                    try:
+                        driver = webdriver.Chrome(service=service, options=options)
+                        print_to_gui(f"{get_symbol('ok')} IG เปิด Chrome ด้วย fallback path สำเร็จ: {fallback_path}")
+                        return driver
+                    except Exception as fallback_error:
+                        print_to_gui(f"{get_symbol('error')} IG ล้มเหลวที่ path: {fallback_path} → {fallback_error}")
+            
+            # --- จุดแก้ไขสำคัญ ---
+            # เมื่อล้มเหลวทั้ง 2 ทาง ให้ "ตะโกน" บอก Error ออกไป
+            print_to_gui(f"{get_symbol('error')} IG fallback ทั้งหมดไม่สำเร็จ")
+            raise RuntimeError("ไม่สามารถเปิด Chrome สำหรับ IG ได้หลังจากลองทุกวิธีแล้ว")
+
+    except Exception as outer_e:
+        # --- จุดแก้ไขสำคัญ ---
+        # ดักจับ Error ทั้งหมดที่อาจเกิดขึ้น แล้ว "ตะโกน" บอกออกไป
+        if print_to_gui:
+            print_to_gui(safe_utf8(f"{get_symbol('error')} create_chrome_driver (IG) ล้มเหลวทั้งหมด: {outer_e}"))
+        
+        raise RuntimeError(f"create_chrome_driver (IG) ล้มเหลว: {outer_e}")
+
+# ==============================================================================
+# 🔴 END: IG ENGINE - ฉบับแก้ไข 🔴
+# ==============================================================================
 
 # ---- START: Utility Functions ----
 def clean_url(url_raw):
@@ -373,7 +398,7 @@ def count_views(driver, url_profile, max_target_clips, print_to_gui, callback):
     reels_list = []
     processed_hrefs = set()
     scrolls = 0
-    max_scrolls = 50
+    max_scrolls = 200
     pause = 2.5
 
     print_to_gui("--- IG Phase: Collecting Reels ---")

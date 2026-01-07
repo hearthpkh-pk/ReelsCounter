@@ -4,7 +4,7 @@
 #collected_reels_list_fb = []
 #scroll_pause = 1.0
 #initial_scroll_attempts_target = 5
-#timeout_seconds = 30
+
 
 # 📦 Built-in
 import sys, os
@@ -397,7 +397,13 @@ def get_reel_date_via_json_driver(driver, reel_url):
                 raise  # หมดรอบแล้วโยน error ออกไป
         
 
+# ==============================================================================
+# 🔴 START: FB ENGINE - ฉบับแก้ไขให้ส่งเสียง Error 🔴
+# ==============================================================================
+
 def create_chrome_driver(print_to_gui=None, headless=True):
+    time.sleep(1) # รอ 1 วินาทีเพื่อให้ทุกอย่างพร้อมก่อนเริ่ม
+    # โครงสร้างหลักทั้งหมดเหมือนเดิม แต่เปลี่ยนจากการ return None เป็น raise RuntimeError
     try:
         if print_to_gui:
             print_to_gui(safe_utf8(f"{get_symbol('info')} Initializing Chrome driver..."))
@@ -407,7 +413,6 @@ def create_chrome_driver(print_to_gui=None, headless=True):
             options.add_argument("--headless=new")
 
         # Stealth & performance flags
-        # --- เหลือไว้เฉพาะ Options ที่จำเป็นและปลอดภัย ---
         options.add_argument("--log-level=3")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
@@ -421,39 +426,72 @@ def create_chrome_driver(print_to_gui=None, headless=True):
             "Chrome/120.0.0.0 Safari/537.36"
         )
 
-        # WebDriverManager (Primary)
+        # --- ส่วนที่ 1: ลองใช้ WebDriverManager เป็นหลัก ---
         try:
             if print_to_gui:
-                print_to_gui(safe_utf8(f"{get_symbol('info')} เปิด Chrome แบบ WebDriverManager..."))
-            service = Service(ChromeDriverManager().install(), log_path=os.devnull)  # << เพิ่มตรงนี้
+                print_to_gui(safe_utf8(f"{get_symbol('info')} กำลังเปิด Chrome ด้วย WebDriverManager..."))
+            
+            # log_path=os.devnull เพื่อซ่อน log ของ chromedriver ไม่ให้รก console
+            service = Service(ChromeDriverManager().install(), log_path=os.devnull)
             driver = webdriver.Chrome(service=service, options=options)
+            
+            if print_to_gui:
+                print_to_gui(safe_utf8(f"{get_symbol('ok')} เปิด Chrome สำเร็จ!"))
             return driver
 
         except Exception as e:
+            # ถ้าวิธีแรกพลาด, จะไปลองวิธีสำรอง
             if print_to_gui:
-                print_to_gui(safe_utf8(f"{get_symbol('error')} WebDriverManager เจ๊ง: {e}"))
+                print_to_gui(safe_utf8(f"{get_symbol('warn')} WebDriverManager ล้มเหลว: {e}"))
+                print_to_gui(safe_utf8(f"{get_symbol('info')} กำลังลองวิธีสำรอง..."))
 
+            # --- ส่วนที่ 2: วิธีสำรอง (Fallback) ---
             try:
-                chrome_path = [
-            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-            r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-        ]
-                options.binary_location = chrome_path
+                # ส่วนนี้ยังคงเหมือนเดิม แต่ถ้าพลาดจะ raise error แทน
+                chrome_path_list = [
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+                ]
+                
+                found_chrome = False
+                for path in chrome_path_list:
+                    if os.path.exists(path):
+                        options.binary_location = path
+                        found_chrome = True
+                        break
+                
+                if not found_chrome:
+                    # ถ้าหา Chrome ไม่เจอเลย ให้โยน Error ออกไป
+                    raise FileNotFoundError("ไม่พบการติดตั้ง Google Chrome ในเครื่อง")
+
                 service = Service(ChromeDriverManager().install())
                 driver = webdriver.Chrome(service=service, options=options)
+                
                 if print_to_gui:
-                    print_to_gui(safe_utf8(f"{get_symbol('ok')} สำรองเปิด Chrome ด้วย path ตายตัว"))
+                    print_to_gui(safe_utf8(f"{get_symbol('ok')} สำรอง: เปิด Chrome ด้วย Path สำเร็จ"))
                 return driver
 
             except Exception as e2:
+                # --- จุดแก้ไขสำคัญ ---
+                # เมื่อล้มเหลวทั้ง 2 ทาง ให้ "ตะโกน" บอก Error ออกไป
                 if print_to_gui:
-                    print_to_gui(safe_utf8(f"{get_symbol('error')} เปิด Chrome ไม่ได้ทั้งสองทาง: {e2}"))
-                return None
+                    print_to_gui(safe_utf8(f"{get_symbol('error')} ล้มเหลวทั้ง 2 วิธี!"))
+                
+                # โยน Error ออกไปให้ run_scan ไปจัดการแสดงผล
+                raise RuntimeError(f"เปิด Chrome ไม่ได้ทั้ง 2 วิธี: {e2}")
 
     except Exception as outer_e:
+        # --- จุดแก้ไขสำคัญ ---
+        # ดักจับ Error ทั้งหมดที่อาจเกิดขึ้น แล้ว "ตะโกน" บอกออกไป
         if print_to_gui:
-            print_to_gui(safe_utf8(f"{get_symbol('warn')}: create_chrome_driver ล้มเหลว: {outer_e}"))
-        return None
+            print_to_gui(safe_utf8(f"{get_symbol('error')} create_chrome_driver ล้มเหลวทั้งหมด: {outer_e}"))
+        
+        # โยน Error ออกไปให้ run_scan ไปจัดการแสดงผล
+        raise RuntimeError(f"create_chrome_driver ล้มเหลว: {outer_e}")
+
+# ==============================================================================
+# 🔴 END: FB ENGINE - ฉบับแก้ไข 🔴
+# ==============================================================================
 
 
 
