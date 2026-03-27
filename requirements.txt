@@ -1,0 +1,4 @@
+pywebview
+selenium
+webdriver-manager
+requests
